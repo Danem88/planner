@@ -551,6 +551,24 @@ details.donebox > summary::-webkit-details-marker { display: none; }
 .styles .sw svg { width: 1.2rem; height: 1.2rem; }
 .styles small { display: block; font-size: .68rem; color: var(--ink2); }
 
+/* ---------- uso con el dedo ---------- */
+/* Sin espera ni zoom al tocar dos veces; sin menú de «mantener pulsado» en botones y enlaces de la app. */
+button, a, input, select, label, summary, [role="checkbox"] { touch-action: manipulation; }
+button, .tabbar a, .item, .card a, .cd, .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+/* Toda la fila responde al toque, no solo el texto. */
+.item > .grow { align-self: stretch; display: flex; flex-direction: column; justify-content: center; min-height: 2.75rem; }
+.item:is(button, a):active, .item > .grow:active { background: color-mix(in srgb, var(--rosa2) 60%, transparent); }
+.seg button { min-height: 2.75rem; }
+.sec button { min-height: 2.75rem; padding: 0 .2rem; }
+.tabs a { padding: .8rem .2rem .7rem; min-width: 2.75rem; text-align: center; }
+.install .ibtns .btn { min-height: 2.75rem; }
+.handle { width: 2.75rem; }
+.switch::after { content: ""; position: absolute; inset: -.6rem -.4rem; }
+.swatches { grid-template-columns: repeat(6, 1fr); }
+.swatches button { max-width: 2.9rem; }
+.card:is(a, button):active, .sub:active, .dl:active { transform: scale(.99); }
+.kinds button, .picks button { min-height: 2.75rem; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }

@@ -124,6 +124,15 @@ export function sheet(html, { onClose, label = 'Ventana' } = {}) {
   el.innerHTML = `<div class="grab"></div>${html}`;
   document.body.append(dim, el);
   openSheets++;
+  // Con el teclado abierto, la hoja sube por encima de él (si no, tapaba «Guardar»).
+  const vv = window.visualViewport;
+  const fit = () => {
+    if (!vv) return;
+    const kb = Math.max(0, innerHeight - vv.height - vv.offsetTop);
+    el.style.bottom = kb + 'px';
+    el.style.maxHeight = kb ? `${vv.height - 8}px` : '';
+  };
+  vv?.addEventListener('resize', fit); vv?.addEventListener('scroll', fit);
   requestAnimationFrame(() => { dim.classList.add('on'); el.classList.add('on'); });
   let closed = false;
   const close = (val) => {
@@ -131,6 +140,7 @@ export function sheet(html, { onClose, label = 'Ventana' } = {}) {
     dim.classList.remove('on'); el.classList.remove('on');
     setTimeout(() => { dim.remove(); el.remove(); }, 300);
     removeEventListener('keydown', onKey);
+    vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit);
     onClose && onClose(val);
   };
   const onKey = e => { if (e.key === 'Escape') close(); };
