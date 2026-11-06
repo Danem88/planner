@@ -1,7 +1,8 @@
 {
-  "name": "Beastudio",
-  "short_name": "Beastudio",
-  "description": "Tareas, horario, exámenes y notas de clase.",
+  "id": "./",
+  "name": "Planner",
+  "short_name": "Planner",
+  "description": "Tareas, horario, exámenes y apuntes de clase.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

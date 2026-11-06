@@ -1,104 +1,145 @@
-// Pantalla «Hoy»: lo primero que ve Bea al abrir la app.
-import { D, save, subjName, color, flowerOf, classesOn, upcoming, dlTitle, reviewProgress } from './store.js';
+// Pantalla «Hoy»: lo primero que se ve al abrir la app.
+// Sus bloques (calendario, clases, fechas, tareas) se ordenan en Ajustes › Organizar.
+import { D, save, subjName, color, flowerOf, classesOn, upcoming, dlTitle, reviewProgress, KINDS, dueReminders, dismissReminder, backupDue } from './store.js';
 import { esc, today, dow, fmtLong, greeting, nowMin, minToHm, daysBetween, relDay, fmtShort, addDays } from './util.js';
-import { ic, ring, colorDot, toast } from './ui.js';
+import { ic, ring, colorDot, catDot, toast } from './ui.js';
 import { editTask, toggleTask } from './add.js';
+import { calendar } from './cal.js';
+import { isInstalled, canOneClick, promptInstall, openInstall, isOldHome, NEW_HOME } from './install.js';
+import { exportBackup } from './ajustes.js';
 
-function draw(el) {
-  const t = today(), d = dow(t), now = nowMin();
+const leftTxt = n => n === 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`;
+
+function blockAhora(t) {
+  const d = dow(t), now = nowMin();
   const classes = classesOn(d);
   const cur = classes.find(c => c.start <= now && now < c.end);
   const next = classes.find(c => c.start > now);
-  const hasSchedule = D.classes.length > 0;
-
-  // Tarjeta de «ahora»
-  let nowCard = '';
+  if (!D.classes.length) return `<a class="card now" href="#horario"><div class="ic" style="background:var(--rosa2)">${ic('i-hor')}</div><div><b>Añade tu horario</b><small>Así verás aquí tus clases de cada día</small></div></a>`;
+  let card;
   if (cur) {
     const left = cur.end - now, pct = Math.round((now - cur.start) / (cur.end - cur.start) * 100);
-    nowCard = `<a class="card now" href="#horario">
+    card = `<a class="card now" href="#horario">
       <div class="ic" style="background:${color(cur.subjectId)}">${ic(flowerOf(cur.subjectId))}</div>
       <div><small>Ahora</small><b>${esc(subjName(cur.subjectId))}</b><small>${cur.room ? esc(cur.room) + ' · ' : ''}hasta las ${minToHm(cur.end)}</small></div>
       <div class="left"><strong>${left}</strong>min</div><div class="bar" style="width:${pct}%"></div></a>`;
   } else if (next) {
     const inMin = next.start - now;
-    nowCard = `<a class="card now" href="#horario">
+    card = `<a class="card now" href="#horario">
       <div class="ic" style="background:${color(next.subjectId)}">${ic(flowerOf(next.subjectId))}</div>
       <div><small>Siguiente</small><b>${esc(subjName(next.subjectId))}</b><small>${next.room ? esc(next.room) + ' · ' : ''}a las ${minToHm(next.start)}</small></div>
       <div class="left"><strong>${inMin >= 120 ? Math.round(inMin / 60) : inMin}</strong>${inMin >= 120 ? 'h' : 'min'}</div></a>`;
-  } else if (hasSchedule) {
-    nowCard = `<div class="card now"><div class="ic" style="background:var(--rosa2)">${ic('fl2')}</div>
+  } else {
+    card = `<div class="card now"><div class="ic" style="background:var(--rosa2)">${ic('fl2')}</div>
       <div><small>Clases</small><b>${classes.length ? 'Hoy ya no tienes más' : 'Hoy no hay clase'}</b></div></div>`;
   }
-
-  const chips = classes.length ? `<div class="sec">Clases de hoy <em>${classes.length}</em></div>
-    <div class="daychips">${classes.map(c => `<a href="#horario" class="c ${c.end <= now ? 'past' : ''} ${c === cur ? 'cur' : ''}" style="background:${color(c.subjectId)}">
+  const chips = classes.length ? `<div class="daychips">${classes.map(c => `<a href="#horario" class="c ${c.end <= now ? 'past' : ''} ${c === cur ? 'cur' : ''}" style="background:${color(c.subjectId)}">
       <span>${minToHm(c.start)}</span>${esc(subjName(c.subjectId))}</a>`).join('')}</div>` : '';
+  return `<div class="sec">Clases</div>${card}${chips}`;
+}
 
-  // Próximo examen y entregas cercanas
+function blockFechas(t) {
   const exam = upcoming('exam')[0];
-  const soon = upcoming('entrega').filter(x => daysBetween(t, x.date) <= 3);
-  let dates = '';
-  if (exam || soon.length) {
-    dates = `<div class="sec">${exam ? 'Próximo examen' : 'Entregas'}</div>`;
-    if (exam) {
-      const n = daysBetween(t, exam.date), p = reviewProgress(exam);
-      dates += `<a class="card exam" href="#fechas/${exam.id}">
-        <div class="ring">${ring(n)}<div><span><strong>${n === 0 ? 'Hoy' : n}</strong>${n ? `<small>${n === 1 ? 'día' : 'días'}</small>` : ''}</span></div></div>
-        <div><b>${esc(dlTitle(exam))}</b><p>${esc(fmtShort(exam.date))}${exam.time ? ' · ' + esc(exam.time) : ''}${p && p.total ? ` · repasado ${p.done} de ${p.total}` : ''}</p></div></a>`;
-    }
-    dates += soon.map(x => `<a class="card exam" href="#fechas/${x.id}" style="padding:.7rem 1rem">
-      ${colorDot(x.subjectId)}<div><b style="font-size:.86rem">${esc(dlTitle(x))}</b><p ${daysBetween(t, x.date) <= 1 ? 'class="warn"' : ''}>Entrega ${esc(relDay(x.date))}</p></div></a>`).join('');
+  const soon = upcoming().filter(x => x.kind !== 'exam' && daysBetween(t, x.date) <= 3);
+  if (!exam && !soon.length) return '';
+  let h = `<div class="sec">Próximas fechas</div>`;
+  if (exam) {
+    const n = daysBetween(t, exam.date), p = reviewProgress(exam);
+    h += `<a class="card exam" href="#fechas/${exam.id}">
+      <div class="ring">${ring(n)}<div><span><strong>${n === 0 ? 'Hoy' : n}</strong>${n ? `<small>${n === 1 ? 'día' : 'días'}</small>` : ''}</span></div></div>
+      <div><b>${esc(dlTitle(exam))}</b><p>${esc(fmtShort(exam.date))}${exam.time ? ' · ' + esc(exam.time) : ''}${p && p.total ? ` · repasado ${p.done} de ${p.total}` : ''}</p></div></a>`;
   }
+  h += soon.map(x => `<a class="card exam" href="#fechas/${x.id}" style="padding:.7rem 1rem">
+    ${catDot(x.kind)}<div><b style="font-size:.86rem">${esc(dlTitle(x))}</b><p ${daysBetween(t, x.date) <= 1 ? 'class="warn"' : ''}>${KINDS[x.kind]} ${esc(relDay(x.date))}</p></div></a>`).join('');
+  return h;
+}
 
-  // Tareas
-  const open = D.tasks.filter(k => !k.done);
-  const forToday = open.filter(k => k.due && k.due <= t);
-  const doneToday = D.tasks.filter(k => k.done && k.doneAt && k.doneAt.slice(0, 10) === t && (!k.due || k.due <= t));
-  const nextDays = open.filter(k => k.due && k.due > t && k.due <= addDays(t, 7)).sort((a, b) => a.due.localeCompare(b.due));
-  const undated = open.filter(k => !k.due);
-  const todayList = [...forToday.sort((a, b) => a.due.localeCompare(b.due)), ...doneToday];
-
-  const row = k => `<div class="item ${k.done ? 'done' : ''} ${!k.done && k.due && k.due < t ? 'overdue' : ''}" data-task="${k.id}">
+function taskRow(k, t) {
+  return `<div class="item ${k.done ? 'done' : ''} ${!k.done && k.due && k.due < t ? 'overdue' : ''}" data-task="${k.id}">
     <span class="cbwrap"><button class="cb" role="checkbox" aria-checked="${k.done}" aria-label="Hecha: ${esc(k.title)}">${ic('i-ok')}</button></span>
     <button class="grow" data-open style="text-align:left"><span class="t">${esc(k.title)}</span>${
       !k.done && k.due && k.due < t ? `<small>Atrasada · era para ${esc(relDay(k.due))}</small>` : k.due && k.due > t ? `<small>${esc(relDay(k.due).replace(/^el /, ''))}</small>` : ''}</button>
     ${k.subjectId ? colorDot(k.subjectId) : ''}</div>`;
+}
 
+function blockTareas(t) {
+  const open = D.tasks.filter(k => !k.done);
+  const forToday = open.filter(k => k.due && k.due <= t).sort((a, b) => a.due.localeCompare(b.due));
+  const doneToday = D.tasks.filter(k => k.done && k.doneAt && k.doneAt.slice(0, 10) === t);
+  const nextDays = open.filter(k => k.due && k.due > t && k.due <= addDays(t, 7)).sort((a, b) => a.due.localeCompare(b.due));
+  const undated = open.filter(k => !k.due);
+  return `
+    <div class="sec">Para hoy ${forToday.length ? `<em>${forToday.length} ${forToday.length === 1 ? 'pendiente' : 'pendientes'}</em>` : ''}</div>
+    ${forToday.length ? `<div class="card list">${forToday.map(k => taskRow(k, t)).join('')}</div>`
+      : `<div class="card empty" style="padding:1rem">${ic('fl2', 'fl')}${doneToday.length ? '¡Todo hecho por hoy!' : 'Nada pendiente para hoy.'}<br>Toca <b>+</b> para apuntar algo.</div>`}
+    ${nextDays.length ? `<div class="sec">Próximos días</div><div class="card list">${nextDays.map(k => taskRow(k, t)).join('')}</div>` : ''}
+    ${undated.length ? `<div class="sec">Sin fecha</div><div class="card list">${undated.map(k => taskRow(k, t)).join('')}</div>` : ''}
+    ${doneToday.length ? `<details class="donebox"><summary class="sec">Hechas hoy <em>${doneToday.length}</em></summary><div class="card list">${doneToday.map(k => taskRow(k, t)).join('')}</div></details>` : ''}`;
+}
+
+function blockReminders(t) {
+  const list = dueReminders();
+  if (!list.length) return '';
+  return list.map(({ d, left }) => `<div class="card remind" data-rem="${d.id}">${ic('i-bell')}
+    <a class="grow" href="#fechas/${d.id}"><small>Recordatorio · ${KINDS[d.kind]} ${leftTxt(left)}</small><b>${esc(dlTitle(d))}</b></a>
+    <button class="btn ghost" data-ok>Vale</button></div>`).join('');
+}
+
+function draw(el) {
+  const t = today();
   const name = D.name ? `, ${esc(D.name)}` : '';
-  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const standalone = isInstalled();
+  const blocks = { ahora: () => blockAhora(t), fechas: () => blockFechas(t), tareas: () => blockTareas(t), calendario: () => '<div data-cal></div>' };
+  const hidden = new Set(D.prefs.homeHidden);
 
   el.innerHTML = `
     <div class="topline"><span class="small">${esc(fmtLong(t))}</span>
       <a class="iconbtn" href="#ajustes" aria-label="Ajustes">${ic('i-gear')}</a></div>
     <h1 class="h1">${greeting()}${name} ${ic('fl', 'i fl')}</h1>
-    ${!standalone && !D.installHidden ? `<div class="card install">${ic('i-home')}<div><b>Ponla en tu pantalla de inicio</b><br>En Safari toca <b>Compartir</b> y luego <b>«Añadir a pantalla de inicio»</b>. Así funciona sin internet, como una app. <button class="btn ghost" data-hide-install style="min-height:2.2rem;padding:0;display:flex;margin-top:.1rem">Entendido</button></div></div>` : ''}
-    ${nowCard}
-    ${!hasSchedule ? `<a class="card now" href="#horario"><div class="ic" style="background:var(--rosa2)">${ic('i-hor')}</div><div><b>Añade tu horario</b><small>Así verás aquí tus clases de cada día</small></div></a>` : ''}
-    ${chips}
-    ${dates}
-    <div class="sec">Para hoy ${todayList.length ? `<em>${doneToday.length} de ${todayList.length}</em>` : ''}</div>
-    ${todayList.length ? `<div class="card list">${todayList.map(row).join('')}</div>`
-      : `<div class="card empty" style="padding:1rem">${ic('fl2', 'fl')}Nada pendiente para hoy.<br>Toca <b>+</b> para apuntar algo.</div>`}
-    ${nextDays.length ? `<div class="sec">Próximos días</div><div class="card list">${nextDays.map(row).join('')}</div>` : ''}
-    ${undated.length ? `<div class="sec">Sin fecha</div><div class="card list">${undated.map(row).join('')}</div>` : ''}
+    ${!standalone && !D.installHidden ? `<div class="card install">${ic('i-home')}<div class="grow"><b>Instálala como una app</b><br>Con su icono y sin internet.
+      <div class="ibtns"><button class="btn pri" data-install>${canOneClick() ? 'Instalar' : 'Cómo se instala'}</button><button class="btn ghost" data-hide-install>Ahora no</button></div></div></div>` : ''}
+    ${isOldHome() ? `<div class="card install moved">${ic('i-move')}<div class="grow"><b>Planner tiene nueva dirección</b><br>Esta app dejará de actualizarse. Pásate en 3 pasos:
+      <ol class="isteps small"><li>Guarda una copia (botón de abajo).</li><li>Abre la nueva dirección e instálala.</li><li>Si al abrirla está vacía, toca «Tengo una copia» y elígela. Después borra este icono.</li></ol>
+      <div class="ibtns"><button class="btn pri" data-backup>Guardar copia</button><a class="btn" href="${NEW_HOME}" target="_blank" rel="noopener">Abrir la nueva</a></div></div></div>` : ''}
+    ${blockReminders(t)}
+    ${backupDue() && !isOldHome() ? `<div class="card install backup">${ic('i-share')}<div class="grow"><b>Guarda una copia</b><br>${D.lastBackup ? 'Hace más de un mes de tu última copia.' : 'Aún no tienes ninguna.'} Todo está solo en este dispositivo: si se borra la app, la copia lo recupera.
+      <div class="ibtns"><button class="btn pri" data-backup>Guardar copia</button><button class="btn ghost" data-snooze>Ahora no</button></div></div></div>` : ''}
+    ${D.prefs.homeOrder.filter(k => !hidden.has(k)).map(k => blocks[k]()).join('')}
+    <a class="organize" href="#organizar">${ic('i-grid')} Organizar esta pantalla</a>
   `;
 
-  el.querySelector('[data-hide-install]')?.addEventListener('click', () => { D.installHidden = true; save(); el.querySelector('.install').remove(); });
-  el.querySelectorAll('[data-task]').forEach(r => {
+  const cal = el.querySelector('[data-cal]');
+  if (cal) calendar(cal, () => draw(el));
+  el.querySelector('[data-hide-install]')?.addEventListener('click', () => { D.installHidden = true; save(); el.querySelector('.install').remove(); toast('Puedes instalarla cuando quieras desde Ajustes'); });
+  el.querySelectorAll('[data-backup]').forEach(b => b.onclick = async () => { if (await exportBackup()) draw(el); });
+  el.querySelector('[data-snooze]')?.addEventListener('click', () => { D.backupSnooze = Date.now() + 7 * 864e5; save(); draw(el); });
+  el.querySelector('[data-install]')?.addEventListener('click', async () => { if (canOneClick()) { if (await promptInstall()) draw(el); } else openInstall(); });
+  el.querySelectorAll('[data-rem]').forEach(r => r.querySelector('[data-ok]').onclick = () => {
+    dismissReminder(D.deadlines.find(d => d.id === r.dataset.rem)); r.remove();
+  });
+  el.querySelectorAll('.list > [data-task]').forEach(r => {
+    if (r.closest('[data-cal]')) return;
     const k = D.tasks.find(x => x.id === r.dataset.task);
     r.querySelector('.cb').onclick = () => {
       toggleTask(k);
-      if (k.done) toast('Tarea hecha', () => { toggleTask(k); draw(el); });
-      draw(el);
+      if (k.done) {
+        // Se marca, se ve el ✓ un momento y desaparece de la lista.
+        const cb = r.querySelector('.cb'); cb.setAttribute('aria-checked', 'true');
+        r.classList.add('leaving');
+        toast('Tarea hecha', () => { toggleTask(k); draw(el); });
+        setTimeout(() => draw(el), 550);
+      } else draw(el);
     };
     r.querySelector('[data-open]').onclick = () => editTask(k, () => draw(el));
   });
-
 }
 
 export function render(el) {
   draw(el);
+  // Si el navegador avisa de que ya se puede instalar con un toque, se cambia el botón.
+  const onInstall = () => { if (!document.querySelector('.sheet')) draw(el); };
+  addEventListener('bea:install', onInstall);
   // Actualizar cada minuto mientras está abierta.
   const timer = setInterval(() => { if (!document.querySelector('.sheet')) draw(el); }, 60000);
-  return () => clearInterval(timer);
+  return () => { clearInterval(timer); removeEventListener('bea:install', onInstall); };
 }

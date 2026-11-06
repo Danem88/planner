@@ -1,17 +1,18 @@
 // Guarda la app en el iPhone para que funcione sin internet.
 // Al cambiar cualquier archivo, sube VERSION para que se actualice.
-const VERSION = 'beastudio-1';
+const VERSION = 'planner-5';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'fonts/SpaceGrotesk-Variable.ttf',
+  'fonts/SpaceGrotesk.woff2',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/util.js', 'js/db.js', 'js/store.js', 'js/ui.js', 'js/parse.js',
-  'js/hoy.js', 'js/horario.js', 'js/fechas.js', 'js/materias.js', 'js/notas.js',
-  'js/editor.js', 'js/clean.js', 'js/add.js', 'js/ajustes.js', 'js/welcome.js',
+  'js/hoy.js', 'js/cal.js', 'js/horario.js', 'js/fechas.js', 'js/materias.js', 'js/grades.js', 'js/notas.js',
+  'js/files.js', 'js/editor.js', 'js/clean.js', 'js/add.js', 'js/ajustes.js', 'js/organizar.js', 'js/welcome.js', 'js/install.js', 'js/share.js',
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' para no guardar copias viejas que el navegador tuviera a mano.
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

@@ -2,6 +2,7 @@
 import { D, save, subjName, color, classesOn, addSubject } from './store.js';
 import { esc, today, dow, mondayOf, addDays, parseYmd, nowMin, minToHm, hmToMin, DIAS, DIAS_CORTOS, uid } from './util.js';
 import { ic, sheet, ask, toast, subjectOptions, handleNewSubject } from './ui.js';
+import { openShare } from './share.js';
 
 let selDay = null;
 const PX = 64; // alto de una hora (px)
@@ -45,7 +46,7 @@ export function render(el) {
 
   el.innerHTML = `
     <div class="topline"><h1 class="h1">Horario</h1>
-      ${D.classes.length ? `<button class="btn ghost" data-add style="padding:0 .2rem">+ Clase</button>` : ''}</div>
+      ${D.classes.length ? `<span class="tlbtns"><button class="iconbtn" data-share aria-label="Compartir el horario con tu clase">${ic('i-share')}</button><button class="btn ghost" data-add style="padding:0 .2rem">+ Clase</button></span>` : ''}</div>
     <div class="week" role="group" aria-label="Día de la semana">${days.map(d => {
       const date = addDays(mon, d - 1);
       return `<button data-day="${d}" aria-pressed="${d === selDay}" class="${D.classes.some(c => c.day === d) ? 'has' : ''}" aria-label="${DIAS[d % 7]} ${parseYmd(date).getDate()}">
@@ -55,6 +56,7 @@ export function render(el) {
 
   el.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { selDay = +b.dataset.day; render(el); });
   el.querySelectorAll('[data-add]').forEach(b => b.onclick = () => editClass(null, () => render(el)));
+  el.querySelector('[data-share]')?.addEventListener('click', () => openShare({ classes: true }));
   el.querySelectorAll('.blk').forEach(b => b.onclick = () => editClass(D.classes.find(c => c.id === b.dataset.id), () => render(el)));
 }
 

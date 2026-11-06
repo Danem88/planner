@@ -5,7 +5,8 @@ import { esc, uid, fmtShort, today } from './util.js';
 import { ic, sheet, toast, ask, subjectOptions, handleNewSubject, refresh } from './ui.js';
 import { parseQuick } from './parse.js';
 
-const KINDS = [['task', 'Tarea'], ['exam', 'Examen'], ['entrega', 'Entrega'], ['note', 'Nota']];
+const KINDS = [['task', 'Tarea'], ['exam', 'Examen'], ['entrega', 'Entrega'], ['presentacion', 'Presentación'], ['note', 'Nota']];
+const isDl = k => k === 'exam' || k === 'entrega' || k === 'presentacion';
 
 export function toggleTask(k) {
   k.done = !k.done;
@@ -20,9 +21,9 @@ function contextSubject() {
   return '';
 }
 
-export function openAdd() {
+export function openAdd(preset = {}) {
   let kind = null;          // elegido a mano; si no, el que se entiende del texto
-  let touched = { s: false, d: false };
+  let touched = { s: false, d: !!preset.date };
   const ctx = contextSubject();
   const { el, close } = sheet(`
     <div class="kinds" role="group" aria-label="Tipo">${KINDS.map(([k, l]) => `<button data-k="${k}" aria-pressed="${k === 'task'}">${l}</button>`).join('')}</div>
@@ -30,7 +31,7 @@ export function openAdd() {
     <div class="understood" aria-live="polite"></div>
     <div class="row2">
       <label class="field"><span>Asignatura</span><select class="inp" name="s">${subjectOptions(ctx)}</select></label>
-      <label class="field" data-datef><span>Día</span><input class="inp" type="date" name="d"></label>
+      <label class="field" data-datef><span>Día</span><input class="inp" type="date" name="d" value="${preset.date || ''}"></label>
       <label class="field" data-secf hidden><span>Sección</span><select class="inp" name="n"></select></label>
     </div>
     <button class="btn pri wide" data-ok>Guardar</button>
@@ -80,14 +81,14 @@ export function openAdd() {
     if (k === 'task') {
       D.tasks.push({ id: uid(), title: p.title || text, subjectId: sid, due: date, done: false, doneAt: '' });
       save(); close(); refresh(); toast('Tarea apuntada');
-    } else if (k === 'exam' || k === 'entrega') {
+    } else if (isDl(k)) {
       if (!date) { f('d').focus(); toast('Elige el día'); return; }
       // Une sola la sección que se llame como el tema, si existe.
       const sec = sid && p.title ? sectionsOf(sid).find(s => s.name.toLowerCase().includes(p.title.toLowerCase())) : null;
-      const d = { id: uid(), kind: k, subjectId: sid, title: p.title, date, time: p.time, sectionId: sec?.id || '', reviewed: [], done: false };
+      const d = { id: uid(), kind: k, subjectId: sid, title: p.title, date, time: p.time, sectionId: sec?.id || '', reviewed: [], done: false, remind: D.prefs.remind.slice(), dismissed: [] };
       D.deadlines.push(d);
       save(); close(); refresh();
-      toast(k === 'exam' ? 'Examen apuntado' : 'Entrega apuntada');
+      toast(k === 'exam' ? 'Examen apuntado' : k === 'entrega' ? 'Entrega apuntada' : 'Presentación apuntada');
     } else {
       if (!sid) { f('s').focus(); toast('Elige la asignatura de la nota'); return; }
       const secId = f('n').value || defaultSection(sid).id;

@@ -1,53 +1,66 @@
-// Pantalla «Materias»: cada asignatura con sus tareas, calificaciones y notas.
-import { D, save, subj, color, flowerOf, upcoming, dlTitle, gradesOf, average, notesOfSubject, sectionsOf, addSubject } from './store.js';
+// Pantalla «Materias»: cada asignatura con sus apuntes, tareas y calificaciones.
+import { D, save, subj, color, flowerOf, upcoming, dlTitle, gradesOf, average, notesOfSubject, filesOfSubject, sectionsOf, addSubject, KINDS, blobsOfNote, catColor, finalAverage } from './store.js';
 import { esc, today, daysBetween, relDay, num, uid } from './util.js';
-import { ic, sheet, ask, toast, backLink } from './ui.js';
+import { ic, sheet, ask, toast, backLink, swatches, bindSwatches, replaceHash, goBack } from './ui.js';
 import { editTask, toggleTask } from './add.js';
 import { renderSections } from './notas.js';
-
-const COLORS = [1, 2, 3, 4, 5, 6];
+import { renderGrades } from './grades.js';
+import { blobDel } from './db.js';
 
 function nextThing(sid) {
   const t = today();
   const d = upcoming().find(x => x.subjectId === sid);
-  if (d) { const n = daysBetween(t, d.date); return `${d.kind === 'exam' ? 'Examen' : 'Entrega'} ${n === 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`}`; }
+  if (d) { const n = daysBetween(t, d.date); return `${KINDS[d.kind]} ${n === 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`}`; }
   const k = D.tasks.filter(x => x.subjectId === sid && !x.done).length;
   if (k) return `${k} ${k === 1 ? 'tarea' : 'tareas'}`;
-  const n = notesOfSubject(sid).length;
-  return n ? `${n} ${n === 1 ? 'nota' : 'notas'}` : 'Nada pendiente';
+  const n = notesOfSubject(sid).length + filesOfSubject(sid).length;
+  return n ? `${n} ${n === 1 ? 'apunte' : 'apuntes'}` : 'Nada pendiente';
 }
 
 export function render(el, params) {
-  if (params[0]) return renderSubject(el, params[0], params[1] || 'tareas');
+  if (params[0]) return renderSubject(el, params[0], params[1] || 'apuntes');
+  const withGrades = D.subjects.filter(s => gradesOf(s.id).length);
   el.innerHTML = `
-    <div class="topline"><h1 class="h1">Asignaturas</h1></div>
+    <div class="topline"><h1 class="h1">Asignaturas</h1>
+      ${D.subjects.length > 1 ? `<a class="btn ghost" href="#organizar" style="padding:0 .2rem">Ordenar</a>` : ''}</div>
     <div class="subs">
       ${D.subjects.map(s => {
-        const a = average(s.id);
+        const fin = finalAverage(s.id);
         return `<a class="sub" href="#materias/${s.id}" style="background:${color(s.id)}">${ic(flowerOf(s.id), 'f')}
-          ${a != null ? `<div class="avg">${num(a)} <span>media</span></div>` : ''}<b>${esc(s.name)}</b><small>${esc(nextThing(s.id))}</small></a>`;
+          ${fin != null ? `<div class="avg">${num(fin)} <span>media</span></div>` : ''}
+          <b>${esc(s.name)}</b><small>${esc(nextThing(s.id))}</small></a>`;
       }).join('')}
       <button class="sub new" data-new>+ Asignatura</button>
-    </div>`;
+    </div>
+    ${withGrades.length ? `<div class="sec">Mis medias</div>
+      <div class="card list medias"><div class="item mh"><span class="grow"></span><span>Exám.</span><span>Trab.</span><span>Final</span></div>
+      ${withGrades.map(s => {
+        const ae = average(gradesOf(s.id, 'exam')), aw = average(gradesOf(s.id, 'work')), fin = finalAverage(s.id);
+        const cell = (v, cls = '') => `<strong class="${cls} ${v != null && v < 5 ? 'low' : ''}">${v != null ? num(v) : '—'}</strong>`;
+        return `<a class="item" href="#materias/${s.id}/calificaciones"><span class="grow">${esc(s.name)}</span>${cell(ae)}${cell(aw)}${cell(fin, 'fin')}</a>`;
+      }).join('')}</div>` : ''}`;
   el.querySelector('[data-new]').onclick = () => editSubject(null, s => { location.hash = '#materias/' + s.id; });
 }
 
 function renderSubject(el, id, tab) {
   const s = subj(id);
-  if (!s) { location.replace('#materias'); return; }
-  const tabs = [['tareas', 'Tareas'], ['notas-cal', 'Calificaciones'], ['notas', 'Notas']];
-  const secs = sectionsOf(id).length, notes = notesOfSubject(id).length;
+  if (!s) { replaceHash('#materias'); return; }
+  if (tab === 'notas') tab = 'apuntes';
+  const tabs = [['apuntes', 'Apuntes'], ['tareas', 'Tareas'], ['calificaciones', 'Calificaciones']];
+  const notes = notesOfSubject(id).length + filesOfSubject(id).length;
   el.innerHTML = `
     <div class="topline">${backLink('#materias', 'Asignaturas')}</div>
     <div class="hero" style="background:${color(id)}">${ic(flowerOf(id), 'f')}
-      <div class="grow"><b>${esc(s.name)}</b><small>${[s.teacher, `${notes} ${notes === 1 ? 'nota' : 'notas'}`].filter(Boolean).map(esc).join(' · ')}</small></div>
+      <div class="grow"><b>${esc(s.name)}</b><small>${[s.teacher, `${notes} ${notes === 1 ? 'apunte' : 'apuntes'}`].filter(Boolean).map(esc).join(' · ')}</small></div>
       <button class="iconbtn" data-edit aria-label="Editar asignatura">${ic('i-edit')}</button></div>
-    <nav class="tabs">${tabs.map(([k, l]) => `<a href="#materias/${id}/${k}" ${k === tab ? 'aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
+    <nav class="tabs">${tabs.map(([k, l]) => `<a href="#materias/${id}/${k}" data-tab="${k}" ${k === tab ? 'aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
     <div data-body></div>`;
   el.querySelector('[data-edit]').onclick = () => editSubject(s, () => renderSubject(el, id, tab));
+  // Cambiar de pestaña no se apila en «Atrás».
+  el.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDefault(); replaceHash(a.getAttribute('href')); });
   const body = el.querySelector('[data-body]');
-  if (tab === 'notas') return renderSections(body, id);
-  if (tab === 'notas-cal') return renderGrades(body, id);
+  if (tab === 'apuntes') return renderSections(body, id);
+  if (tab === 'calificaciones') return renderGrades(body, id);
   renderTasks(body, id);
 }
 
@@ -61,8 +74,8 @@ function renderTasks(el, sid) {
     <button class="grow" data-open style="text-align:left"><span class="t">${esc(k.title)}</span>${k.due ? `<small>${esc(relDay(k.due))}</small>` : ''}</button></div>`;
   el.innerHTML = `
     <div class="quickadd"><input class="inp" placeholder="Nueva tarea de esta asignatura" enterkeyhint="done" aria-label="Nueva tarea"><button class="btn pri" data-add aria-label="Añadir tarea">${ic('i-plus')}</button></div>
-    ${dl.length ? `<div class="sec">Próximas fechas</div>${dl.map(d => `<a class="card dl" href="#fechas/${d.id}"><div class="n" style="background:${color(sid)}"><strong>${Math.max(0, daysBetween(t, d.date))}</strong><small>días</small></div>
-      <div class="grow"><b>${esc(dlTitle(d))}</b><p>${d.kind === 'exam' ? 'Examen' : 'Entrega'} · ${esc(relDay(d.date))}</p></div></a>`).join('')}` : ''}
+    ${dl.length ? `<div class="sec">Próximas fechas</div>${dl.map(d => `<a class="card dl" href="#fechas/${d.id}"><div class="n" style="background:${catColor(d.kind)}"><strong>${Math.max(0, daysBetween(t, d.date))}</strong><small>días</small></div>
+      <div class="grow"><b>${esc(dlTitle(d))}</b><p>${KINDS[d.kind]} · ${esc(relDay(d.date))}</p></div></a>`).join('')}` : ''}
     <div class="sec">Pendientes</div>
     ${open.length ? `<div class="card list">${open.map(row).join('')}</div>` : `<div class="card empty" style="padding:1rem">No hay tareas pendientes.</div>`}
     ${done.length ? `<div class="sec">Hechas</div><div class="card list">${done.map(row).join('')}</div>` : ''}`;
@@ -82,72 +95,31 @@ function renderTasks(el, sid) {
   });
 }
 
-function renderGrades(el, sid) {
-  const list = gradesOf(sid);
-  const a = average(sid);
-  const prev = list.length > 1 ? average(sid, list.slice(0, -1)) : null;
-  const delta = a != null && prev != null ? a - prev : null;
-  const last8 = list.slice(-8);
-  el.innerHTML = `
-    ${list.length ? `
-      <div class="media"><strong>${num(a)}</strong><p>Media${list.length > 1 ? ` de ${list.length} notas` : ''}<br>
-        ${delta != null && Math.abs(delta) >= 0.05 ? `<span style="color:${delta > 0 ? 'var(--rosaT)' : 'var(--accent)'}">${delta > 0 ? '↑' : '↓'} ${num(Math.abs(delta))} con la última</span>` : ''}</p></div>
-      <div class="spark" aria-hidden="true">${last8.map((g, i) => `<i class="${i === last8.length - 1 ? 'last' : ''}" style="height:${Math.max(6, g.value * 10)}%"></i>`).join('')}</div>
-      <div class="card list">${list.slice().reverse().map(g => `<button class="item grade" data-g="${g.id}"><div class="grow"><span class="t">${esc(g.title || 'Calificación')}</span><small>${esc(relDay(g.date).replace(/^el /, ''))}</small></div>
-        <strong class="${g.value < 5 ? 'low' : ''}">${String(g.value).replace('.', ',')}</strong></button>`).join('')}</div>`
-    : `<div class="empty">${ic('fl2', 'fl')}Aún no hay calificaciones.<br>Apunta la nota de cada examen o trabajo y verás tu media.</div>`}
-    <button class="dashed" data-add>+ Añadir calificación</button>`;
-  el.querySelector('[data-add]').onclick = () => editGrade(null, sid, () => renderGrades(el, sid));
-  el.querySelectorAll('[data-g]').forEach(b => b.onclick = () => editGrade(D.grades.find(g => g.id === b.dataset.g), sid, () => renderGrades(el, sid)));
-}
-
-function editGrade(g, sid, done) {
-  const { el, close } = sheet(`
-    <h2>${g ? 'Calificación' : 'Nueva calificación'}</h2>
-    <label class="field"><span>¿De qué?</span><input class="inp" name="t" value="${esc(g?.title || '')}" placeholder="Examen tema 3"></label>
-    <div class="row2">
-      <label class="field"><span>Nota (0 a 10)</span><input class="inp" name="v" inputmode="decimal" value="${g ? String(g.value).replace('.', ',') : ''}" placeholder="7,5"></label>
-      <label class="field"><span>Día</span><input class="inp" type="date" name="d" value="${g?.date || today()}"></label>
-    </div>
-    <div class="acts">${g ? '<button class="btn danger" data-del>Quitar</button>' : '<button class="btn" data-cancel>Cancelar</button>'}<button class="btn pri" data-ok>Guardar</button></div>`, { label: 'Calificación' });
-  const f = n => el.querySelector(`[name=${n}]`);
-  setTimeout(() => (g ? f('v') : f('t')).focus(), 320);
-  el.querySelector('[data-cancel]')?.addEventListener('click', () => close());
-  el.querySelector('[data-del]')?.addEventListener('click', () => {
-    const i = D.grades.indexOf(g); D.grades.splice(i, 1); save(); close(); done();
-    toast('Calificación quitada', () => { D.grades.splice(i, 0, g); save(); done(); });
-  });
-  el.querySelector('[data-ok]').onclick = () => {
-    const v = parseFloat(f('v').value.replace(',', '.'));
-    if (!(v >= 0 && v <= 10)) { f('v').focus(); toast('Escribe una nota de 0 a 10'); return; }
-    const data = { subjectId: sid, title: f('t').value.trim(), value: Math.round(v * 100) / 100, date: f('d').value || today() };
-    if (g) Object.assign(g, data); else D.grades.push({ id: uid(), ...data });
-    save(); close(); done();
-  };
-}
-
 export function editSubject(s, done) {
-  let col = s?.color || (D.subjects.length % 6) + 1;
+  let col = s?.color || (D.subjects.length % 24) + 1;
   const { el, close } = sheet(`
     <h2>${s ? 'Editar asignatura' : 'Nueva asignatura'}</h2>
     <label class="field"><span>Nombre</span><input class="inp" name="n" value="${esc(s?.name || '')}" placeholder="Matemáticas"></label>
     <label class="field"><span>Profesor o profesora (opcional)</span><input class="inp" name="p" value="${esc(s?.teacher || '')}" placeholder="Prof. Ruiz"></label>
-    <div class="field"><span>Color</span><div class="swatches" role="group" aria-label="Color">${COLORS.map(c => `<button data-c="${c}" aria-pressed="${c === col}" style="background:var(--s${c})" aria-label="Color ${c}"></button>`).join('')}</div></div>
+    <div class="field"><span>Color</span>${swatches(col)}</div>
     <div class="acts">${s ? '<button class="btn danger" data-del>Eliminar</button>' : '<button class="btn" data-cancel>Cancelar</button>'}<button class="btn pri" data-ok>Guardar</button></div>`, { label: 'Asignatura' });
   const f = n => el.querySelector(`[name=${n}]`);
   if (!s) setTimeout(() => f('n').focus(), 320);
-  el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { col = +b.dataset.c; el.querySelectorAll('[data-c]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+  bindSwatches(el, c => { col = c; });
   el.querySelector('[data-cancel]')?.addEventListener('click', () => close());
   el.querySelector('[data-del]')?.addEventListener('click', async () => {
     close();
-    const n = notesOfSubject(s.id).length;
-    if (!await ask(`¿Eliminar ${s.name}?`, { ok: 'Eliminar', danger: true, detail: `Se borrarán también sus clases, tareas, fechas, calificaciones${n ? ` y sus ${n} notas` : ''}. No se puede deshacer.` })) return;
+    const n = notesOfSubject(s.id).length + filesOfSubject(s.id).length;
+    if (!await ask(`¿Eliminar ${s.name}?`, { ok: 'Eliminar', danger: true, detail: `Se borrarán también sus clases, tareas, fechas, calificaciones${n === 1 ? ' y su apunte' : n ? ` y sus ${n} apuntes` : ''}. No se puede deshacer.` })) return;
     const secIds = new Set(sectionsOf(s.id).map(x => x.id));
+    for (const x of D.notes.filter(x => secIds.has(x.sectionId))) for (const b of blobsOfNote(x)) blobDel(b).catch(() => {});
+    for (const x of D.files.filter(x => secIds.has(x.sectionId))) blobDel(x.blob).catch(() => {});
     D.notes = D.notes.filter(x => !secIds.has(x.sectionId));
+    D.files = D.files.filter(x => !secIds.has(x.sectionId));
     D.sections = D.sections.filter(x => x.subjectId !== s.id);
     for (const k of ['classes', 'tasks', 'deadlines', 'grades']) D[k] = D[k].filter(x => x.subjectId !== s.id);
     D.subjects = D.subjects.filter(x => x !== s);
-    save(); location.hash = '#materias';
+    save(); goBack('#materias');
   });
   el.querySelector('[data-ok]').onclick = () => {
     const name = f('n').value.trim();

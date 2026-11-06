@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Beastudio</title>
+<title>Planner</title>
 <meta name="description" content="Tareas, horario, exámenes y notas de clase.">
 <meta name="theme-color" content="#FBF6F5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Beastudio">
+<meta name="apple-mobile-web-app-title" content="Planner">
 <meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
@@ -18,6 +18,7 @@
 <script>
   // Modo de color antes de pintar, para que no parpadee.
   try { const t = JSON.parse(localStorage.getItem('bea.theme') || '"auto"'); if (t !== 'auto') document.documentElement.dataset.theme = t; } catch (e) {}
+  try { const a = localStorage.getItem('bea.accent'); if (a && a !== 'rosa') document.documentElement.dataset.accent = a; } catch (e) {}
 </script>
 </head>
 <body>

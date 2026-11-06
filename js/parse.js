@@ -22,8 +22,9 @@ export function parseQuick(text, subjects) {
   const take = (re) => { const m = re.exec(n); if (m) cut.push([m.index, m.index + m[0].length]); return m; };
   const r = { kind: null, subjectId: '', date: '', time: '', title: '' };
 
-  if (take(/\b(examen|control|prueba|recuperacion)\b( (de|del))?/)) r.kind = 'exam';
-  else if (take(/\b(entregar|entrega|trabajo|proyecto|presentacion)\b( (de|del))?/)) r.kind = 'entrega';
+  if (take(/\b(examen|control|prueba|recuperacion)\b( (del|de)\b)?/)) r.kind = 'exam';
+  else if (take(/\b(presentacion|presentar|exposicion|exponer|oral)( oral)?\b( (del|de)\b)?/)) r.kind = 'presentacion';
+  else if (take(/\b(entregar|entrega|trabajo|proyecto)\b( (del|de)\b)?/)) r.kind = 'entrega';
   else if (/^\s*nota\b/.test(n)) { take(/^\s*nota\b( (de|sobre))?:?/); r.kind = 'note'; }
 
   // Asignatura: nombre entero, primera palabra del nombre o un apodo («mates»).

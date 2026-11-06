@@ -1,14 +1,18 @@
-// Pantalla «Fechas»: exámenes y entregas con cuenta atrás.
-import { D, save, color, subjName, deadline, dlTitle, isPast, reviewProgress, sectionsOf, section, notesOf, addSection, addSubject } from './store.js';
-import { esc, today, daysBetween, fmtShort, relDay, countdown, uid, ago } from './util.js';
-import { ic, ring, sheet, menu, ask, askText, toast, backLink, subjectOptions, handleNewSubject } from './ui.js';
+// Pantalla «Fechas»: exámenes, entregas y presentaciones con cuenta atrás y recordatorios.
+import { D, save, catColor, subjName, deadline, dlTitle, isPast, reviewProgress, sectionsOf, section, notesOf, addSection, addSubject, KINDS, KINDS_PL, doneLabel, gradeOfDeadline } from './store.js';
+import { esc, today, daysBetween, fmtShort, relDay, countdown, uid, ago, num } from './util.js';
+import { ic, ring, sheet, menu, ask, askText, toast, backLink, subjectOptions, handleNewSubject, goBack } from './ui.js';
+import { editGrade } from './grades.js';
+import { openShare } from './share.js';
 
-let filter = 'all';
+let filter = 'exam';
+const REMIND = [[0, 'El mismo día'], [1, '1 día antes'], [2, '2 días antes'], [3, '3 días antes'], [7, '1 semana antes']];
+const remindTxt = r => !r || !r.length ? 'Sin recordatorio' : r.slice().sort((a, b) => a - b).map(x => REMIND.find(y => y[0] === x)?.[1] || `${x} días antes`).join(', ');
 
 export function render(el, params) {
   if (params[0]) return renderDetail(el, params[0]);
   const t = today();
-  const list = D.deadlines.filter(d => filter === 'all' || d.kind === filter);
+  const list = D.deadlines.filter(d => d.kind === filter);
   const future = list.filter(d => !isPast(d)).sort((a, b) => a.date.localeCompare(b.date));
   const past = list.filter(isPast).sort((a, b) => b.date.localeCompare(a.date));
   const week = future.filter(d => daysBetween(t, d.date) <= 7);
@@ -16,46 +20,61 @@ export function render(el, params) {
 
   const row = d => {
     const n = daysBetween(t, d.date), cd = countdown(d.date), p = reviewProgress(d);
-    const kind = d.kind === 'exam' ? 'Examen' : 'Entrega';
-    const when = isPast(d) ? (d.done ? 'Entregada' : relDay(d.date)) : relDay(d.date);
+    const when = isPast(d) ? (d.done ? doneLabel(d) : relDay(d.date)) : relDay(d.date);
     return `<a class="card dl ${!isPast(d) && n <= 1 ? 'urgent' : ''} ${isPast(d) ? 'past' : ''}" href="#fechas/${d.id}">
-      <div class="n" style="background:${color(d.subjectId)}">${isPast(d) ? ic(d.done ? 'i-ok' : 'fl2') : `<strong>${cd.n}</strong><small>${cd.u}</small>`}</div>
-      <div class="grow"><b>${esc(dlTitle(d))}</b><p>${kind} · ${esc(when)}${d.time ? ' · ' + esc(d.time) : ''}</p>
+      <div class="n" style="background:${catColor(d.kind)}">${isPast(d) ? ic(d.done ? 'i-ok' : 'fl2') : `<strong>${cd.n}</strong><small>${cd.u}</small>`}</div>
+      <div class="grow"><b>${esc(dlTitle(d))}</b><p>${esc(when)}${d.time ? ' · ' + esc(d.time) : ''}${!isPast(d) && d.remind?.length ? ` · ${ic('i-bell', 'i mini')}` : ''}</p>
       ${p && p.total && !isPast(d) ? `<div class="ready" aria-label="Repasado ${p.done} de ${p.total}"><i style="width:${p.done / p.total * 100}%"></i></div>` : ''}</div></a>`;
   };
 
   el.innerHTML = `
-    <div class="topline"><h1 class="h1">Fechas</h1></div>
-    <div class="seg" role="group" aria-label="Filtrar">
-      ${[['all', 'Todo'], ['exam', 'Exámenes'], ['entrega', 'Entregas']].map(([k, l]) => `<button data-f="${k}" aria-pressed="${filter === k}">${l}</button>`).join('')}
+    <div class="topline"><h1 class="h1">Fechas</h1><span class="tlbtns">
+      <button class="iconbtn" data-share aria-label="Compartir con tu clase">${ic('i-share')}</button>
+      <button class="btn ghost" data-new style="padding:0 .2rem">+ Añadir</button></span></div>
+    <div class="seg cats" role="group" aria-label="Tipo de fecha">
+      ${Object.entries(KINDS_PL).map(([k, l]) => `<button data-f="${k}" aria-pressed="${filter === k}"><span class="dot cat" style="--c:${catColor(k)}"></span>${l}</button>`).join('')}
     </div>
-    ${!future.length && !past.length ? `<div class="empty" style="margin-top:1rem">${ic('fl2', 'fl')}No hay ${filter === 'entrega' ? 'entregas' : filter === 'exam' ? 'exámenes' : 'exámenes ni entregas'} apuntados.<br>
-      <button class="btn pri" data-new>+ Añadir</button></div>` : ''}
+    ${!future.length && !past.length ? `<div class="empty" style="margin-top:1rem">${ic('fl2', 'fl')}No hay ${KINDS_PL[filter].toLowerCase()} apuntadas.<br>
+      <button class="btn pri" data-new>+ Añadir ${KINDS[filter].toLowerCase()}</button></div>` : ''}
     ${week.length ? `<div class="sec">Esta semana</div>${week.map(row).join('')}` : ''}
     ${later.length ? `<div class="sec">Más adelante</div>${later.map(row).join('')}` : ''}
     ${past.length ? `<details class="past"><summary class="sec">Ya pasadas <em>${past.length}</em></summary>${past.slice(0, 40).map(row).join('')}</details>` : ''}
   `;
   el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; render(el, []); });
-  el.querySelector('[data-new]')?.addEventListener('click', () => editDeadline(null, d => { location.hash = '#fechas/' + d.id; }, filter === 'entrega' ? 'entrega' : 'exam'));
+  el.querySelector('[data-share]').onclick = () => openShare();
+  el.querySelectorAll('[data-new]').forEach(b => b.onclick = () => editDeadline(null, d => { location.hash = '#fechas/' + d.id; }, filter));
 }
 
 function renderDetail(el, id) {
   const d = deadline(id);
-  if (!d) { location.replace('#fechas'); return; }
+  if (!d) { goBack('#fechas'); return; }
+  filter = d.kind;
   const t = today(), n = daysBetween(t, d.date), p = reviewProgress(d);
   const sec = d.sectionId && section(d.sectionId);
   const notes = sec ? notesOf(sec.id) : [];
-  const kind = d.kind === 'exam' ? 'Examen' : 'Entrega';
+  const g = gradeOfDeadline(d.id);
+  const draw = () => renderDetail(el, id);
 
   el.innerHTML = `
     <div class="topline">${backLink('#fechas', 'Fechas')}
       <button class="iconbtn" data-more aria-label="Opciones">${ic('i-more')}</button></div>
     <div class="exhero">
       <div class="ring">${ring(Math.max(0, n), 72, 5)}<div><span>${isPast(d) ? ic(d.done ? 'i-ok' : 'fl2') : `<strong>${n === 0 ? 'Hoy' : n}</strong>${n ? `<small>${n === 1 ? 'día' : 'días'}</small>` : ''}`}</span></div></div>
-      <div><b>${esc(dlTitle(d))}</b><p>${kind} · ${esc(fmtShort(d.date))}${d.time ? ' · ' + esc(d.time) : ''}</p>
-      ${d.done ? '<p>Entregada</p>' : n < 0 ? `<p>Fue hace ${-n} ${n === -1 ? 'día' : 'días'}</p>` : ''}</div>
+      <div><span class="kindtag" style="--c:${catColor(d.kind)}">${KINDS[d.kind]}</span><b>${esc(dlTitle(d))}</b><p>${esc(fmtShort(d.date))}${d.time ? ' · ' + esc(d.time) : ''}</p>
+      ${d.done ? `<p>${doneLabel(d)}</p>` : n < 0 ? `<p>Fue hace ${-n} ${n === -1 ? 'día' : 'días'}</p>` : ''}</div>
     </div>
-    ${d.kind === 'entrega' ? `<button class="btn ${d.done ? '' : 'pri'} wide" data-done style="margin-top:1rem">${d.done ? 'Marcar como no entregada' : 'Marcar como entregada'}</button>` : ''}
+    ${d.kind !== 'exam' ? `<button class="btn ${d.done ? '' : 'pri'} wide" data-done style="margin-top:1rem">${d.done ? `Marcar como no ${doneLabel(d).toLowerCase()}` : `Marcar como ${doneLabel(d).toLowerCase()}`}</button>` : ''}
+
+    ${isPast(d) ? '' : `<div class="sec">Recordatorio</div>
+    <div class="card list">
+      <button class="item" data-remind>${ic('i-bell')}<div class="grow"><span class="t">${esc(remindTxt(d.remind))}</span><small>Te aparecerá en «Hoy» al abrir la app</small></div>${ic('i-chev', 'i chev')}</button>
+      <button class="item" data-ics>${ic('i-cal')}<div class="grow"><span class="t">Añadir al calendario del móvil</span><small>Con aviso del móvil aunque no abras la app</small></div></button>
+    </div>`}
+
+    ${d.subjectId ? `<div class="sec">Nota</div>
+      ${g ? `<button class="card item gradebtn" data-grade><div class="grow"><span class="t">${esc(g.title || 'Calificación')}</span><small>Cuenta en la media de ${g.type === 'exam' ? 'exámenes' : 'trabajos'}</small></div><strong class="${g.value < 5 ? 'low' : ''}">${String(g.value).replace('.', ',')}</strong></button>`
+        : `<button class="dashed" data-grade style="margin-top:0">+ Poner la nota cuando la tengas</button>`}` : ''}
+
     ${sec ? `
       ${notes.length ? `<div class="prog"><span>Repasado</span><span>${p.done} de ${p.total} notas</span></div><div class="pbar"><i style="width:${p.total ? p.done / p.total * 100 : 0}%"></i></div>` : ''}
       <div class="sec">Para repasar <em>${esc(sec.name)}</em></div>
@@ -65,7 +84,7 @@ function renderDetail(el, id) {
           <a class="grow" href="#nota/${nt.id}"><span class="t">${esc(nt.title || 'Sin título')}</span><small>${esc(ago(nt.updated))}</small></a></div>`;
       }).join('')}</div>` : `<div class="card empty">Esta sección aún no tiene notas.<br><a class="btn" href="#notas/${sec.subjectId}">Ir a las notas</a></div>`}
       <button class="btn ghost wide" data-link style="margin-top:.4rem">Cambiar las notas unidas</button>`
-    : d.subjectId ? `<div class="sec">Para repasar</div><div class="card empty">Une una sección de notas a ${d.kind === 'exam' ? 'este examen' : 'esta entrega'} para tenerlas aquí y marcar lo que ya has repasado.
+    : d.subjectId ? `<div class="sec">Para repasar</div><div class="card empty">Une una sección de notas para tenerlas aquí y marcar lo que ya has repasado.
       <br><button class="btn pri" data-link>Unir notas</button></div>` : ''}
   `;
 
@@ -73,19 +92,67 @@ function renderDetail(el, id) {
     d.reviewed = d.reviewed || [];
     const i = d.reviewed.indexOf(r.dataset.n);
     if (i >= 0) d.reviewed.splice(i, 1); else d.reviewed.push(r.dataset.n);
-    save(); renderDetail(el, id);
+    save(); draw();
   });
-  el.querySelector('[data-done]')?.addEventListener('click', () => { d.done = !d.done; save(); renderDetail(el, id); });
-  el.querySelectorAll('[data-link]').forEach(b => b.onclick = () => pickSection(d, () => renderDetail(el, id)));
+  el.querySelector('[data-done]')?.addEventListener('click', () => { d.done = !d.done; save(); draw(); });
+  el.querySelectorAll('[data-link]').forEach(b => b.onclick = () => pickSection(d, draw));
+  el.querySelector('[data-remind]')?.addEventListener('click', () => editRemind(d, draw));
+  el.querySelector('[data-ics]')?.addEventListener('click', () => addToCalendar(d));
+  el.querySelector('[data-grade]')?.addEventListener('click', () => editGrade(g || null,
+    { subjectId: d.subjectId, type: d.kind === 'exam' ? 'exam' : 'work', title: d.title || KINDS[d.kind], date: d.date <= t ? d.date : t, deadlineId: d.id }, draw));
   el.querySelector('[data-more]').onclick = () => menu(null, [
-    { label: 'Editar', icon: 'i-edit', run: () => editDeadline(d, () => renderDetail(el, id)) },
+    { label: 'Editar', icon: 'i-edit', run: () => editDeadline(d, draw) },
     { label: 'Eliminar', icon: 'i-trash', danger: true, run: async () => {
       if (!await ask(`¿Eliminar «${dlTitle(d)}»?`, { ok: 'Eliminar', danger: true, detail: 'Las notas unidas no se borran.' })) return;
       const i = D.deadlines.indexOf(d); D.deadlines.splice(i, 1); save();
-      location.hash = '#fechas';
+      goBack('#fechas');
       toast('Eliminado', () => { D.deadlines.splice(i, 0, d); save(); dispatchEvent(new Event('bea:refresh')); });
     } },
   ]);
+}
+
+function editRemind(d, done) {
+  const sel = new Set(d.remind || []);
+  const { el, close } = sheet(`<h2>Recordatorio</h2>
+    <p class="small" style="margin:-.4rem 0 .8rem;line-height:1.45">Elige cuándo quieres que te lo recuerde. Aparecerá arriba en «Hoy» al abrir la app.</p>
+    <div class="card list">${REMIND.map(([k, l]) => `<button class="item" data-r="${k}"><span class="grow">${l}</span><span class="cb" role="checkbox" aria-checked="${sel.has(k)}">${ic('i-ok')}</span></button>`).join('')}</div>
+    <div class="acts"><button class="btn" data-none>Sin recordatorio</button><button class="btn pri" data-ok>Guardar</button></div>`, { label: 'Recordatorio' });
+  el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+    const k = +b.dataset.r; sel.has(k) ? sel.delete(k) : sel.add(k);
+    b.querySelector('.cb').setAttribute('aria-checked', sel.has(k));
+  });
+  const apply = () => { d.remind = [...sel].sort((a, b) => a - b); d.dismissed = []; save(); close(); done(); };
+  el.querySelector('[data-none]').onclick = () => { sel.clear(); apply(); };
+  el.querySelector('[data-ok]').onclick = apply;
+}
+
+// Archivo .ics: el iPhone lo añade a su Calendario con los avisos elegidos.
+function addToCalendar(d) {
+  const pad = x => String(x).padStart(2, '0');
+  const ymdc = s => s.replace(/-/g, '');
+  const now = new Date(), stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}00Z`;
+  const icsEsc = s => String(s).replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  let when;
+  if (d.time) {
+    const [h, m] = d.time.split(':').map(Number);
+    const endH = h + 1;
+    when = `DTSTART:${ymdc(d.date)}T${pad(h)}${pad(m)}00\r\nDTEND:${ymdc(d.date)}T${pad(Math.min(23, endH))}${pad(m)}00`;
+  } else {
+    const next = new Date(d.date + 'T12:00'); next.setDate(next.getDate() + 1);
+    when = `DTSTART;VALUE=DATE:${ymdc(d.date)}\r\nDTEND;VALUE=DATE:${next.getFullYear()}${pad(next.getMonth() + 1)}${pad(next.getDate())}`;
+  }
+  // Avisos: con hora, N días antes a esa hora; sin hora, a las 9 de la mañana.
+  const alarms = (d.remind?.length ? d.remind : [1]).map(r => {
+    const trig = d.time ? (r ? `-P${r}D` : '-PT1H') : (r ? `-P${r - 1}DT15H` : 'PT9H');
+    return `BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:${icsEsc(dlTitle(d))}\r\nTRIGGER:${trig}\r\nEND:VALARM`;
+  }).join('\r\n');
+  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Planner//ES\r\nBEGIN:VEVENT\r\nUID:${d.id}@planner\r\nDTSTAMP:${stamp}\r\n${when}\r\nSUMMARY:${icsEsc(dlTitle(d))}\r\nDESCRIPTION:${icsEsc(KINDS[d.kind] + ' · ' + subjName(d.subjectId))}\r\n${alarms}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
+  const file = new File([ics], `${dlTitle(d).replace(/[\\/:*?"<>|]/g, '')}.ics`, { type: 'text/calendar' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = file.name; a.rel = 'noopener';
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  toast('Toca «Añadir» en el calendario que aparece');
 }
 
 function pickSection(d, done) {
@@ -102,12 +169,12 @@ function pickSection(d, done) {
 
 export function editDeadline(d, done, kind = 'exam', preset = {}) {
   const isNew = !d;
-  const v = d || { kind, subjectId: preset.subjectId || '', title: '', date: preset.date || '', time: '', sectionId: '' };
+  const v = d || { kind, subjectId: preset.subjectId || '', title: '', date: preset.date || '', time: '', sectionId: '', remind: D.prefs.remind.slice() };
   const secOpts = sid => `<option value="">Ninguna</option>` + sectionsOf(sid).map(s => `<option value="${s.id}" ${s.id === v.sectionId ? 'selected' : ''}>${esc(s.name)}</option>`).join('') + (sid ? '<option value="__new">+ Nueva sección…</option>' : '');
   const { el, close } = sheet(`
     <h2>${isNew ? 'Nueva fecha' : 'Editar'}</h2>
     <div class="seg" role="group" aria-label="Tipo" style="margin-bottom:.9rem">
-      <button data-k="exam" aria-pressed="${v.kind === 'exam'}">Examen</button><button data-k="entrega" aria-pressed="${v.kind === 'entrega'}">Entrega</button></div>
+      ${Object.entries(KINDS).map(([k, l]) => `<button data-k="${k}" aria-pressed="${v.kind === k}">${l}</button>`).join('')}</div>
     <label class="field"><span>Asignatura</span><select class="inp" name="s">${subjectOptions(v.subjectId)}</select></label>
     <label class="field"><span>Tema o título (opcional)</span><input class="inp" name="t" value="${esc(v.title)}" placeholder="Tema 4 · La célula"></label>
     <div class="row2">
@@ -134,8 +201,8 @@ export function editDeadline(d, done, kind = 'exam', preset = {}) {
     const sid = f('s').value === '__new' ? '' : f('s').value;
     const data = { kind: k, subjectId: sid, title: f('t').value.trim(), date: f('d').value, time: f('h').value, sectionId: f('n').value === '__new' ? '' : f('n').value };
     let item = d;
-    if (isNew) { item = { id: uid(), reviewed: [], done: false, ...data }; D.deadlines.push(item); }
-    else Object.assign(d, data);
+    if (isNew) { item = { id: uid(), reviewed: [], done: false, remind: v.remind, dismissed: [], ...data }; D.deadlines.push(item); }
+    else { if (d.date !== data.date) d.dismissed = []; Object.assign(d, data); }
     save(); close(); done && done(item);
   };
 }

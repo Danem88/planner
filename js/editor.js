@@ -4,7 +4,8 @@
 import { blobPut, blobUrl, blobDel } from './db.js';
 import { cleanHtml, isBlocky, looksMarkdown, mdToHtml, plainToHtml } from './clean.js';
 import { ic, sheet, menu, toast, askText } from './ui.js';
-import { esc, uid, debounce, fmtDur } from './util.js';
+import { esc, uid, debounce, fmtDur, fmtSize } from './util.js';
+import { pickFiles, storeFile, openFile, badge } from './files.js';
 
 const URL_RE = /^\s*(https?:\/\/[^\s]+)\s*$/i;
 
@@ -33,6 +34,7 @@ export function mountEditor(host, n, onChange) {
       <span class="sep"></span>
       <button data-c="cam" aria-label="Hacer una foto">${ic('i-cam')}</button>
       <button data-c="pic" aria-label="Añadir fotos del carrete">${ic('i-img')}</button>
+      <button data-c="file" aria-label="Adjuntar un archivo (PDF, Word, PowerPoint…)">${ic('i-clip')}</button>
       <button data-c="link" aria-label="Añadir un enlace">${ic('i-lnk')}</button>
       <button data-c="mic" aria-label="Grabar una nota de voz">${ic('i-mic')}</button>
     </div>
@@ -53,9 +55,20 @@ export function mountEditor(host, n, onChange) {
     c.querySelectorAll('.vnote .play').forEach(p => p.innerHTML = ic('i-play'));
     return c.innerHTML.trim() === '<br>' ? '' : c.innerHTML;
   };
+  // Texto para el buscador: sin los rótulos de las piezas («PDF», «toca para abrir»…).
+  const plainText = () => {
+    const c = doc.cloneNode(true);
+    c.querySelectorAll('.x, .fbadge, .fcard small, .lcard small, .lcard .fav, .vnote .play, .vnote .wave').forEach(e => e.remove());
+    c.removeAttribute('contenteditable');
+    c.style.cssText = 'position:absolute;left:-9999px;top:0;width:20rem';
+    document.body.append(c);
+    const t = c.innerText || '';
+    c.remove();
+    return t;
+  };
   const persist = debounce(() => {
     n.html = serialize();
-    n.text = (doc.innerText || '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 30000);
+    n.text = plainText().replace(/\n{3,}/g, '\n\n').trim().slice(0, 30000);
     onChange();
   }, 500);
   doc.addEventListener('input', () => persist());
@@ -72,7 +85,7 @@ export function mountEditor(host, n, onChange) {
     if (lastRange && doc.contains(lastRange.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(lastRange); }
   };
   const topBlock = node => { while (node && node.parentNode !== doc) node = node.parentNode; return node; };
-  const isEmpty = b => b && (b.nodeType === 3 ? !b.textContent.trim() : (!b.textContent.trim() && !b.querySelector('figure, .vnote, .lcard, table, hr')));
+  const isEmpty = b => b && (b.nodeType === 3 ? !b.textContent.trim() : (!b.textContent.trim() && !b.querySelector('figure, .vnote, .lcard, .fcard, table, hr')));
   const caretIn = el => { const r = document.createRange(); r.setStart(el, 0); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); lastRange = r.cloneRange(); };
 
   function insertBlock(html, { focus = true } = {}) {
@@ -175,6 +188,7 @@ export function mountEditor(host, n, onChange) {
     if (c === 'quote') return cmd('formatBlock', currentBlockTag() === 'BLOCKQUOTE' ? '<p>' : '<blockquote>');
     if (c === 'chk') return toggleChecks();
     if (c === 'cam' || c === 'pic') { onSel(); fileIn(c).click(); return; }
+    if (c === 'file') return addFiles();
     if (c === 'link') return addLink();
     if (c === 'mic') return recordVoice();
   });
@@ -190,6 +204,16 @@ export function mountEditor(host, n, onChange) {
       await blobPut(id, blob);
       insertBlock(photoHtml(id), { focus: false });
     } catch (err) { toast('No se pudo añadir la foto'); }
+  }
+
+  async function addFiles() {
+    onSel();
+    const files = await pickFiles();
+    for (const f of files) {
+      if (f.type.startsWith('image/') && !/heic|heif/i.test(f.type)) { await addPhoto(f); continue; }
+      const meta = await storeFile(f);
+      if (meta) insertBlock(fileHtml(meta), { focus: false });
+    }
   }
 
   function addLink(prefill = '') {
@@ -215,6 +239,8 @@ export function mountEditor(host, n, onChange) {
     const imgs = [...cd.files].filter(f => f.type.startsWith('image/'));
     const html = cd.getData('text/html'), txt = cd.getData('text/plain');
     if (imgs.length && !txt.trim()) { e.preventDefault(); onSel(); for (const f of imgs) await addPhoto(f); return; }
+    const docs = [...cd.files].filter(f => !f.type.startsWith('image/'));
+    if (docs.length) { e.preventDefault(); onSel(); for (const f of docs) { const meta = await storeFile(f); if (meta) insertBlock(fileHtml(meta), { focus: false }); } return; }
     const m = URL_RE.exec(txt);
     if (m) {
       e.preventDefault(); onSel();
@@ -245,15 +271,21 @@ export function mountEditor(host, n, onChange) {
     const a = e.target.closest('a.inl');
     openOnClick = a && document.activeElement !== doc ? a.href : null;
     if (openOnClick) e.preventDefault();
-    if (e.target.closest('figure, .vnote, .lcard')) e.preventDefault();  // no abrir el teclado
+    if (e.target.closest('figure, .vnote, .lcard, .fcard')) e.preventDefault();  // no abrir el teclado
   });
   doc.addEventListener('click', e => {
     if (openOnClick) { window.open(openOnClick, '_blank', 'noopener'); openOnClick = null; e.preventDefault(); return; }
-    const piece = e.target.closest('figure, .vnote, .lcard');
+    const piece = e.target.closest('figure, .vnote, .lcard, .fcard');
     if (!piece) return;
     e.preventDefault();
     const x = e.target.closest('.x');
-    if (piece.matches('figure')) {
+    if (piece.matches('.fcard')) {
+      const meta = { blob: piece.dataset.blob, name: piece.dataset.name, type: piece.dataset.type, size: +piece.dataset.size };
+      openFile(meta, [
+        { label: 'Cambiar el nombre', icon: 'i-edit', run: async () => { const v = await askText('Nombre del archivo', { value: meta.name }); if (v) { piece.dataset.name = v; piece.querySelector('b').textContent = v; persist(); } } },
+        { label: 'Quitar el archivo', icon: 'i-trash', danger: true, run: () => removePiece(piece, 'Archivo quitado') },
+      ]);
+    } else if (piece.matches('figure')) {
       if (x) menu('Foto', [
         { label: 'Ver en grande', icon: 'i-img', run: () => openViewer(piece) },
         { label: 'Quitar la foto', icon: 'i-trash', danger: true, run: () => removePiece(piece, 'Foto quitada') },
@@ -311,7 +343,7 @@ export function mountEditor(host, n, onChange) {
     onSel();
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch (e) { toast('Sin permiso para el micrófono. Actívalo en Ajustes del iPhone › Safari › Micrófono.'); return; }
+    catch (e) { toast('Sin permiso para el micrófono. Actívalo en los ajustes del móvil (permisos del navegador › Micrófono).'); return; }
     const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(m => window.MediaRecorder?.isTypeSupported?.(m)) || '';
     let rec;
     try { rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
@@ -403,6 +435,10 @@ function voiceHtml(id, dur, wave, name) {
     <div class="wave" aria-hidden="true">${bars}</div><span class="len">${fmtDur(dur)} · <span class="vn">${esc(name)}</span></span>
     <button class="x" aria-label="Opciones del audio">${ic('i-more')}</button></div>`;
 }
+function fileHtml(m) {
+  return `<div class="fcard" contenteditable="false" data-blob="${m.blob}" data-name="${esc(m.name)}" data-type="${esc(m.type)}" data-size="${m.size}">${badge(m.name, m.type)}
+    <span class="txt"><b>${esc(m.name)}</b><small>${fmtSize(m.size)} · toca para abrir</small></span><button class="x" aria-label="Opciones del archivo">${ic('i-more')}</button></div>`;
+}
 function linkHtml(url, title) {
   let host = url;
   try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
@@ -443,6 +479,7 @@ function hydrate(root) {
     }
   });
   (root.matches?.('.vnote') ? [root] : root.querySelectorAll('.vnote')).forEach(v => v.contentEditable = 'false');
+  (root.matches?.('.fcard') ? [root] : root.querySelectorAll('.fcard')).forEach(v => v.contentEditable = 'false');
 }
 
 // Reduce las fotos (lado largo 1600 px, JPEG) para no llenar el iPhone.

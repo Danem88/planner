@@ -1,6 +1,6 @@
 // Piezas comunes de la interfaz: iconos, hojas, menús, preguntas y avisos.
 import { esc } from './util.js';
-import { D, color } from './store.js';
+import { D, color, catColor } from './store.js';
 
 const SPRITE = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
 <symbol id="fl" viewBox="-12 -12 24 24"><g fill="currentColor"><ellipse cx="0" cy="-6" rx="3.6" ry="5.4"/><ellipse cx="0" cy="-6" rx="3.6" ry="5.4" transform="rotate(72)"/><ellipse cx="0" cy="-6" rx="3.6" ry="5.4" transform="rotate(144)"/><ellipse cx="0" cy="-6" rx="3.6" ry="5.4" transform="rotate(216)"/><ellipse cx="0" cy="-6" rx="3.6" ry="5.4" transform="rotate(288)"/></g><circle r="2.6" fill="var(--bg)"/><circle r="1.5" fill="currentColor" opacity=".6"/></symbol>
@@ -37,13 +37,62 @@ const SPRITE = `<svg width="0" height="0" style="position:absolute" aria-hidden=
 <symbol id="i-olist" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 6.5h10M10 12h10M10 17.5h10"/></g><g fill="currentColor" font-family="sans-serif" font-size="6.5" font-weight="700"><text x="2.5" y="9">1</text><text x="2.5" y="14.5">2</text><text x="2.5" y="20">3</text></g></symbol>
 <symbol id="i-mark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4.5l5 5-8 8H7v-4.5z"/><path d="M4 20.5h16" stroke-width="3" opacity=".45"/></g></symbol>
 <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7" stroke-linecap="round"/></g></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24"><path d="M19 11.5l-7.2 7.2a4.6 4.6 0 0 1-6.5-6.5l7.6-7.6a3.1 3.1 0 0 1 4.4 4.4l-7.5 7.5a1.5 1.5 0 0 1-2.2-2.2l6.9-6.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></g></symbol>
+<symbol id="i-drag" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="9" cy="6.5" r="1.5"/><circle cx="15" cy="6.5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.5" r="1.5"/><circle cx="15" cy="17.5" r="1.5"/></g></symbol>
+<symbol id="i-left" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-right" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></g><g fill="currentColor"><circle cx="8.5" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="15.5" cy="14" r="1"/></g></symbol>
+<symbol id="i-palette" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.6-1.8-.3-1.3.5-2.2 1.8-2.2h1.6a3.5 3.5 0 0 0 3.5-3.5c0-5.2-3.8-9.5-8.5-9.5z"/></g><g fill="currentColor"><circle cx="7.8" cy="11" r="1.3"/><circle cx="10.5" cy="7.3" r="1.3"/><circle cx="15" cy="7.6" r="1.3"/></g></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></g></symbol>
 </defs></svg>`;
 
 export const refresh = () => dispatchEvent(new Event('bea:refresh'));
 
-export function injectSprite() { document.body.insertAdjacentHTML('afterbegin', SPRITE); }
+export function injectSprite() {
+  document.body.insertAdjacentHTML('afterbegin', SPRITE);
+  let d = 'flores';
+  try { d = localStorage.getItem('bea.deco') || 'flores'; } catch (e) {}
+  applyDeco(d);
+}
+
+// Adornos de la app (Ajustes › Estilo): flores, formas geométricas o casi nada.
+// Se cambia el dibujo de los dos símbolos «fl» y «fl2», que usan todas las pantallas.
+const DECO = {
+  formas: [
+    '<rect x="-7" y="-7" width="14" height="14" rx="3.5" transform="rotate(45)" fill="currentColor"/><circle r="2.4" fill="var(--bg)"/>',
+    '<g fill="none" stroke="currentColor" stroke-width="1.4"><circle r="8.5"/><circle r="4"/></g><circle r="1.4" fill="currentColor"/>',
+  ],
+  nada: [
+    '<circle r="5" fill="currentColor"/>',
+    '<circle r="6" fill="none" stroke="currentColor" stroke-width="1.4"/>',
+  ],
+};
+let floresSvg = null;
+export function applyDeco(deco) {
+  const a = document.getElementById('fl'), b = document.getElementById('fl2');
+  if (!a || !b) return;
+  if (!floresSvg) floresSvg = [a.innerHTML, b.innerHTML];
+  const [x, y] = DECO[deco] || floresSvg;
+  a.innerHTML = x; b.innerHTML = y;
+  document.documentElement.dataset.deco = DECO[deco] ? deco : 'flores';
+  try { localStorage.setItem('bea.deco', DECO[deco] ? deco : 'flores'); } catch (e) {}
+}
 export const ic = (name, cls = 'i') => `<svg class="${cls}" aria-hidden="true"><use href="#${name}"/></svg>`;
-export const backLink = (href, label) => `<a class="back" href="${href}">${ic('i-back')}<span>${esc(label)}</span></a>`;
+// «Atrás» vuelve a la pantalla de antes; si se abrió directamente, a la indicada.
+export const backLink = (href, label) => `<a class="back" href="${href}" data-back>${ic('i-back')}<span>${esc(label)}</span></a>`;
+
+// ---- navegación ----
+export const nav = { stack: [], replacing: false };
+export function goBack(fallback) {
+  if (nav.stack.length > 1) history.back();
+  else replaceHash(fallback);
+}
+export function replaceHash(h) {
+  if (location.hash === h) return;
+  nav.replacing = true;
+  location.replace(h);
+}
 
 export function ring(daysLeft, size = 58, stroke = 4) {
   const r = (size - stroke) / 2 - 1, c = 2 * Math.PI * r;
@@ -60,6 +109,7 @@ export function subjectOptions(selected, { none = 'Sin asignatura', add = true }
     (add ? `<option value="__new">+ Nueva asignatura…</option>` : '');
 }
 export const colorDot = sid => `<span class="dot" style="background:${color(sid)}"></span>`;
+export const catDot = k => `<span class="dot cat" style="--c:${catColor(k)}"></span>`;
 
 // ---- hoja que sube desde abajo ----
 let openSheets = 0;
@@ -130,18 +180,102 @@ export function askText(title, { value = '', placeholder = '', ok = 'Guardar' } 
 
 // Aviso pequeño abajo, con «Deshacer» opcional.
 let toastEl, toastT;
-export function toast(text, undo) {
+export function toast(text, undo, btn = 'Deshacer', ms) {
   toastEl?.remove(); clearTimeout(toastT);
   const t = document.createElement('div');
   t.className = 'toast';
   t.setAttribute('role', 'status');
-  t.innerHTML = `<span>${esc(text)}</span>${undo ? '<button>Deshacer</button>' : ''}`;
+  t.innerHTML = `<span>${esc(text)}</span>${undo ? `<button>${esc(btn)}</button>` : ''}`;
   document.body.append(t);
   toastEl = t;
   requestAnimationFrame(() => t.classList.add('on'));
   if (undo) t.querySelector('button').onclick = () => { undo(); hide(); };
   const hide = () => { t.classList.remove('on'); setTimeout(() => t.remove(), 250); };
-  toastT = setTimeout(hide, undo ? 5000 : 2200);
+  toastT = setTimeout(hide, ms || (undo ? 5000 : 2200));
+}
+
+// ---- colores ----
+// 24 de la paleta + «Más colores» (18 tonos × 6 intensidades + grises, generados aquí
+// para no cargar el CSS) + «Cualquier color» con el selector del propio móvil.
+const hex = (h, s, l) => {
+  s /= 100; l /= 100;
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+// Al usarse se suavizan (--cmix), así que aquí van algo más intensos.
+const TONES = [[75, 84], [70, 74], [62, 64], [56, 54], [50, 44], [45, 34]];
+const MORE = [
+  ...Array.from({ length: 18 }, (_, i) => TONES.map(([s, l]) => hex(i * 20, s, l))).flat(),
+  ...[88, 74, 60, 46, 32, 18].map(l => hex(20, 8, l)),
+];
+const isPreset = c => typeof c === 'number' || /^\d+$/.test(c);
+const swatchBtn = (c, sel) => `<button type="button" data-c="${c}" role="radio" aria-checked="${String(c) === String(sel)}" style="background:${isPreset(c) ? `var(--s${c})` : `color-mix(in srgb, ${c} var(--cmix), var(--cmixbg))`}" aria-label="Color ${c}"></button>`;
+export function swatches(sel, label = 'Color') {
+  const custom = typeof sel === 'string' && sel[0] === '#';
+  const inMore = custom && MORE.includes(sel);
+  return `<div class="colorpick">
+    <div class="swatches" role="radiogroup" aria-label="${esc(label)}">${Array.from({ length: 24 }, (_, i) => swatchBtn(i + 1, sel)).join('')}</div>
+    <details class="morecolors" ${inMore ? 'open' : ''}><summary>Más colores</summary>
+      <div class="swatches more" role="radiogroup" aria-label="Más colores">${MORE.map(c => swatchBtn(c, sel)).join('')}</div></details>
+    <label class="anycolor"><span class="cur" style="background:${custom ? sel : 'conic-gradient(#f2a3a3, #f2d8a3, #b8e2a8, #a3d8f2, #c3a3f2, #f2a3d8, #f2a3a3)'}"></span>
+      Cualquier color<input type="color" value="${custom ? sel : '#e7b7bd'}" aria-label="Elegir cualquier color"></label>
+  </div>`;
+}
+export function bindSwatches(root, onPick) {
+  const all = () => root.querySelectorAll('.swatches [data-c]');
+  all().forEach(b => b.onclick = () => {
+    all().forEach(x => x.setAttribute('aria-checked', x === b));
+    onPick(isPreset(b.dataset.c) ? +b.dataset.c : b.dataset.c);
+  });
+  const inp = root.querySelector('.anycolor input');
+  if (inp) inp.onchange = () => {
+    all().forEach(x => x.setAttribute('aria-checked', 'false'));
+    root.querySelector('.anycolor .cur').style.background = inp.value;
+    onPick(inp.value.toLowerCase());
+  };
+}
+export function pickColor(title, sel) {
+  return new Promise(res => {
+    const { el, close } = sheet(`<h2>${esc(title)}</h2>${swatches(sel, title)}`, { label: title, onClose: v => res(v != null && typeof v !== 'object' ? v : null) });
+    bindSwatches(el, c => setTimeout(() => close(c), 150));
+  });
+}
+
+// Lista que se ordena arrastrando el asa (⠿). Cada hijo lleva data-id y un .handle.
+export function sortable(list, onDone) {
+  const finish = () => onDone([...list.children].map(c => c.dataset.id));
+  list.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.handle'); if (!h || !list.contains(h)) return;
+    const item = h.closest('[data-id]');
+    e.preventDefault();
+    let y0 = e.clientY;
+    item.classList.add('dragging');
+    // Se mueven los vecinos, nunca la fila arrastrada (moverla cortaría el arrastre).
+    const move = ev => {
+      ev.preventDefault();
+      const dy = ev.clientY - y0;
+      const prev = item.previousElementSibling, next = item.nextElementSibling;
+      if (prev && dy < -prev.offsetHeight / 2) { item.after(prev); y0 -= prev.offsetHeight; }
+      else if (next && dy > next.offsetHeight / 2) { item.before(next); y0 += next.offsetHeight; }
+      item.style.transform = `translateY(${ev.clientY - y0}px)`;
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+      item.style.transform = ''; item.classList.remove('dragging');
+      finish();
+    };
+    addEventListener('pointermove', move, { passive: false }); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  });
+  // Con teclado o VoiceOver: flechas arriba/abajo sobre el asa.
+  list.addEventListener('keydown', e => {
+    const h = e.target.closest('.handle'); if (!h || !/^Arrow(Up|Down)$/.test(e.key)) return;
+    const item = h.closest('[data-id]');
+    e.preventDefault();
+    if (e.key === 'ArrowUp' && item.previousElementSibling) list.insertBefore(item, item.previousElementSibling);
+    else if (e.key === 'ArrowDown' && item.nextElementSibling) list.insertBefore(item.nextElementSibling, item);
+    else return;
+    h.focus(); finish();
+  });
 }
 
 // Al elegir «+ Nueva asignatura…» en un desplegable.

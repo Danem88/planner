@@ -53,6 +53,7 @@ export const hmToMin = s => { const [h, m] = String(s).split(':').map(Number); r
 export const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 export const num = (x, d = 1) => Number(x).toFixed(d).replace('.', ',');
 export const fmtDur = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+export const fmtSize = b => b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${num(b / 1048576, b < 10 * 1048576 ? 1 : 0)} MB`;
 
 export function ago(ts) {
   const d = new Date(ts), s = ymd(d), n = daysBetween(s, today());

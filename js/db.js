@@ -6,7 +6,7 @@ let dbp;
 function db() {
   if (dbp) return dbp;
   dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('beastudio', 1);
+    const r = indexedDB.open('beastudio', 1);  // nombre antiguo: no cambiarlo o se perderían los datos
     r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('kv'); d.createObjectStore('blobs'); };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
