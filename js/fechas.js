@@ -1,7 +1,7 @@
 // Pantalla «Fechas»: exámenes, entregas y presentaciones con cuenta atrás y recordatorios.
-import { D, save, catColor, subjName, deadline, dlTitle, isPast, reviewProgress, sectionsOf, section, notesOf, addSection, addSubject, KINDS, KINDS_PL, doneLabel, gradeOfDeadline } from './store.js';
-import { esc, today, daysBetween, fmtShort, relDay, countdown, uid, ago, num } from './util.js';
-import { ic, ring, sheet, menu, ask, askText, toast, backLink, subjectOptions, handleNewSubject, goBack } from './ui.js';
+import { D, save, catColor, subjName, deadline, dlTitle, isPast, reviewProgress, sectionsOf, section, notesOf, addSection, addSubject, KINDS, KINDS_PL, doneLabel, gradeOfDeadline, upcoming, termOf, TERMS } from './store.js';
+import { esc, today, daysBetween, fmtShort, relDay, countdown, uid, ago } from './util.js';
+import { ic, ring, sheet, menu, ask, askText, toast, backLink, subjectOptions, handleNewSubject, goBack, catDot } from './ui.js';
 import { editGrade } from './grades.js';
 import { openShare } from './share.js';
 
@@ -29,6 +29,7 @@ export function render(el, params) {
 
   el.innerHTML = `
     <div class="topline"><h1 class="h1">Fechas</h1><span class="tlbtns">
+      <button class="iconbtn" data-ics aria-label="Pasar las fechas al calendario del móvil">${ic('i-cal')}</button>
       <button class="iconbtn" data-share aria-label="Compartir con tu clase">${ic('i-share')}</button>
       <button class="btn ghost" data-new style="padding:0 .2rem">+ Añadir</button></span></div>
     <div class="seg cats" role="group" aria-label="Tipo de fecha">
@@ -42,6 +43,7 @@ export function render(el, params) {
   `;
   el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; render(el, []); });
   el.querySelector('[data-share]').onclick = () => openShare();
+  el.querySelector('[data-ics]').onclick = exportAll;
   el.querySelectorAll('[data-new]').forEach(b => b.onclick = () => editDeadline(null, d => { location.hash = '#fechas/' + d.id; }, filter));
 }
 
@@ -126,12 +128,13 @@ function editRemind(d, done) {
   el.querySelector('[data-ok]').onclick = apply;
 }
 
-// Archivo .ics: el iPhone lo añade a su Calendario con los avisos elegidos.
-function addToCalendar(d) {
-  const pad = x => String(x).padStart(2, '0');
+// Archivo .ics: el móvil lo añade a su calendario con los avisos elegidos.
+// Cada fecha lleva su identificador, así volver a añadirla la actualiza en vez de repetirla.
+const pad = x => String(x).padStart(2, '0');
+const icsEsc = s => String(s).replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+function icsEvent(d) {
   const ymdc = s => s.replace(/-/g, '');
   const now = new Date(), stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}00Z`;
-  const icsEsc = s => String(s).replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
   let when;
   if (d.time) {
     const [h, m] = d.time.split(':').map(Number);
@@ -146,13 +149,38 @@ function addToCalendar(d) {
     const trig = d.time ? (r ? `-P${r}D` : '-PT1H') : (r ? `-P${r - 1}DT15H` : 'PT9H');
     return `BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:${icsEsc(dlTitle(d))}\r\nTRIGGER:${trig}\r\nEND:VALARM`;
   }).join('\r\n');
-  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Planner//ES\r\nBEGIN:VEVENT\r\nUID:${d.id}@planner\r\nDTSTAMP:${stamp}\r\n${when}\r\nSUMMARY:${icsEsc(dlTitle(d))}\r\nDESCRIPTION:${icsEsc(KINDS[d.kind] + ' · ' + subjName(d.subjectId))}\r\n${alarms}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
-  const file = new File([ics], `${dlTitle(d).replace(/[\\/:*?"<>|]/g, '')}.ics`, { type: 'text/calendar' });
+  return `BEGIN:VEVENT\r\nUID:${d.id}@planner\r\nDTSTAMP:${stamp}\r\n${when}\r\nSUMMARY:${icsEsc(dlTitle(d))}\r\nDESCRIPTION:${icsEsc(KINDS[d.kind] + ' · ' + subjName(d.subjectId))}\r\n${alarms}\r\nEND:VEVENT`;
+}
+function downloadIcs(list, name) {
+  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Planner//ES\r\n${list.map(icsEvent).join('\r\n')}\r\nEND:VCALENDAR\r\n`;
+  const file = new File([ics], `${name.replace(/[\\/:*?"<>|]/g, '')}.ics`, { type: 'text/calendar' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(file); a.download = file.name; a.rel = 'noopener';
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-  toast('Toca «Añadir» en el calendario que aparece');
+  toast(list.length > 1 ? 'Toca «Añadir todo» en el calendario que aparece' : 'Toca «Añadir» en el calendario que aparece');
+}
+const addToCalendar = d => downloadIcs([d], dlTitle(d));
+
+// Pasar muchas fechas a la vez: elegir tipos y si son las de esta evaluación o todas las próximas.
+function exportAll() {
+  const t = today(), term = termOf(t);
+  const kinds = new Set(Object.keys(KINDS));
+  let range = 'term';
+  const { el, close } = sheet(`<h2>Al calendario del móvil</h2>
+    <p class="small" style="margin:-.4rem 0 .8rem;line-height:1.45">Se añaden todas de golpe, con sus recordatorios como avisos del móvil. Si alguna ya estaba, se actualiza.</p>
+    <div class="seg" role="group" aria-label="Cuáles" style="margin-bottom:.8rem"><button data-r="term" aria-pressed="true">Esta evaluación</button><button data-r="all" aria-pressed="false">Todas las próximas</button></div>
+    <div class="card list">${Object.entries(KINDS_PL).map(([k, l]) => `<button class="item" data-k="${k}">${catDot(k)}<span class="grow">${l}</span><span class="cb" role="checkbox" aria-checked="true">${ic('i-ok')}</span></button>`).join('')}</div>
+    <button class="btn pri wide" data-go style="margin-top:1rem"></button>`, { label: 'Al calendario del móvil' });
+  const pickList = () => upcoming().filter(d => kinds.has(d.kind) && (range === 'all' || (termOf(d.date) === term && daysBetween(t, d.date) < 160)));
+  const refreshBtn = () => { const n = pickList().length; const b = el.querySelector('[data-go]'); b.textContent = n ? `Añadir ${n} ${n === 1 ? 'fecha' : 'fechas'}` : 'No hay fechas'; b.disabled = !n; };
+  el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { range = b.dataset.r; el.querySelectorAll('[data-r]').forEach(x => x.setAttribute('aria-pressed', x === b)); refreshBtn(); });
+  el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    const k = b.dataset.k; kinds.has(k) ? kinds.delete(k) : kinds.add(k);
+    b.querySelector('.cb').setAttribute('aria-checked', kinds.has(k)); refreshBtn();
+  });
+  el.querySelector('[data-go]').onclick = () => { const list = pickList(); if (!list.length) return; close(); downloadIcs(list, range === 'term' ? `Planner ${TERMS[term]}` : 'Planner fechas'); };
+  refreshBtn();
 }
 
 function pickSection(d, done) {

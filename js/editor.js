@@ -1,7 +1,7 @@
 // Editor de una nota: texto con formato, casillas, fotos, enlaces y notas de voz.
 // Todo vive en un único bloque editable; las fotos, audios y enlaces son piezas
 // no editables dentro de él (se mueven y se borran como un todo).
-import { blobPut, blobUrl, blobDel } from './db.js';
+import { blobPut, blobUrl, blobDel, blobUrlFresh } from './db.js';
 import { cleanHtml, isBlocky, looksMarkdown, mdToHtml, plainToHtml } from './clean.js';
 import { ic, sheet, menu, toast, askText } from './ui.js';
 import { esc, uid, debounce, fmtDur, fmtSize } from './util.js';
@@ -426,7 +426,7 @@ export function mountEditor(host, n, onChange) {
 }
 
 // ---- piezas ----
-function photoHtml(id) {
+export function photoHtml(id) {
   return `<figure contenteditable="false" data-blob="${id}"><img alt="Foto de la nota"><button class="x" aria-label="Opciones de la foto">${ic('i-more')}</button></figure>`;
 }
 function voiceHtml(id, dur, wave, name) {
@@ -483,7 +483,7 @@ function hydrate(root) {
 }
 
 // Reduce las fotos (lado largo 1600 px, JPEG) para no llenar el iPhone.
-function compress(file) {
+export function compress(file) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -506,20 +506,89 @@ function openViewer(fig) {
   const v = document.createElement('div');
   v.className = 'viewer';
   v.setAttribute('role', 'dialog'); v.setAttribute('aria-label', 'Foto');
-  v.innerHTML = `<div class="vt"><button data-close>Cerrar</button></div><div class="stage"><img alt="Foto" src="${src}"></div>`;
+  v.innerHTML = `<div class="vt"><button data-close>Cerrar</button><span><button data-rot>${ic('i-rot')} Girar</button><button data-crop>${ic('i-crop')} Recortar</button></span></div>
+    <div class="stage"><img alt="Foto" src="${src}"></div>
+    <div class="cropbar" hidden><button data-ccancel>Cancelar</button><button class="ok" data-cok>Recortar</button></div>`;
   document.body.append(v);
   const img = v.querySelector('img');
-  let s = 1, tx = 0, ty = 0, base = null;
+  let s = 1, tx = 0, ty = 0, base = null, cropping = false;
   const pts = new Map();
   let start = null, lastTap = 0, swipeY = 0;
   const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`; };
   const close = () => { v.remove(); removeEventListener('keydown', onKey); };
-  const onKey = e => { if (e.key === 'Escape') close(); };
+  const onKey = e => { if (e.key === 'Escape') { if (cropping) endCrop(); else close(); } };
   addEventListener('keydown', onKey);
   v.querySelector('[data-close]').onclick = close;
   const box = () => base || (base = img.getBoundingClientRect());
+
+  // ---- girar y recortar: se guarda la foto nueva en el mismo sitio ----
+  const id = fig.dataset.blob;
+  const saveCanvas = async (c, msg) => {
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+    if (!blob) { toast('No se pudo cambiar la foto'); return; }
+    await blobPut(id, blob);
+    const url = await blobUrlFresh(id);
+    img.src = url; const fi = fig.querySelector('img'); if (fi) fi.src = url;
+    s = 1; tx = ty = 0; base = null; apply();
+    toast(msg);
+  };
+  v.querySelector('[data-rot]').onclick = async () => {
+    const c = document.createElement('canvas');
+    c.width = img.naturalHeight; c.height = img.naturalWidth;
+    const g = c.getContext('2d');
+    g.translate(c.width, 0); g.rotate(Math.PI / 2); g.drawImage(img, 0, 0);
+    await saveCanvas(c, 'Foto girada');
+  };
+  let crop = null;
+  const endCrop = () => { cropping = false; crop?.remove(); crop = null; v.querySelector('.cropbar').hidden = true; v.querySelector('.vt').hidden = false; };
+  v.querySelector('[data-crop]').onclick = () => {
+    s = 1; tx = ty = 0; apply();
+    cropping = true; base = null;
+    v.querySelector('.vt').hidden = true; v.querySelector('.cropbar').hidden = false;
+    const r = img.getBoundingClientRect();
+    crop = document.createElement('div');
+    crop.className = 'crop';
+    Object.assign(crop.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    crop.innerHTML = '<div class="cbox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>';
+    v.append(crop);
+    const cb = crop.firstChild;
+    let R = { x: r.width * 0.08, y: r.height * 0.08, w: r.width * 0.84, h: r.height * 0.84 };
+    const MIN = 48;
+    const put = () => Object.assign(cb.style, { left: R.x + 'px', top: R.y + 'px', width: R.w + 'px', height: R.h + 'px' });
+    put();
+    crop.addEventListener('pointerdown', e => {
+      const h = e.target.dataset.h || (e.target === cb ? 'move' : null);
+      if (!h) return;
+      e.preventDefault(); e.stopPropagation();
+      e.target.setPointerCapture(e.pointerId);
+      const s0 = { ...R }, x0 = e.clientX, y0 = e.clientY;
+      const mv = ev => {
+        const dx = ev.clientX - x0, dy = ev.clientY - y0;
+        if (h === 'move') { R.x = Math.min(Math.max(0, s0.x + dx), r.width - s0.w); R.y = Math.min(Math.max(0, s0.y + dy), r.height - s0.h); }
+        else {
+          if (h.includes('w')) { const nx = Math.min(Math.max(0, s0.x + dx), s0.x + s0.w - MIN); R.w = s0.w + (s0.x - nx); R.x = nx; }
+          if (h.includes('e')) R.w = Math.min(Math.max(MIN, s0.w + dx), r.width - s0.x);
+          if (h.includes('n')) { const ny = Math.min(Math.max(0, s0.y + dy), s0.y + s0.h - MIN); R.h = s0.h + (s0.y - ny); R.y = ny; }
+          if (h.includes('s')) R.h = Math.min(Math.max(MIN, s0.h + dy), r.height - s0.y);
+        }
+        put();
+      };
+      const upc = () => { e.target.removeEventListener('pointermove', mv); e.target.removeEventListener('pointerup', upc); e.target.removeEventListener('pointercancel', upc); };
+      e.target.addEventListener('pointermove', mv); e.target.addEventListener('pointerup', upc); e.target.addEventListener('pointercancel', upc);
+    });
+    v.querySelector('[data-ccancel]').onclick = endCrop;
+    v.querySelector('[data-cok]').onclick = async () => {
+      const k = img.naturalWidth / r.width;
+      const c = document.createElement('canvas');
+      c.width = Math.round(R.w * k); c.height = Math.round(R.h * k);
+      c.getContext('2d').drawImage(img, R.x * k, R.y * k, R.w * k, R.h * k, 0, 0, c.width, c.height);
+      endCrop();
+      await saveCanvas(c, 'Foto recortada');
+    };
+  };
+
   v.addEventListener('pointerdown', e => {
-    if (e.target.closest('.vt')) return;
+    if (cropping || e.target.closest('.vt, .cropbar')) return;
     v.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     box();
@@ -541,7 +610,7 @@ function openViewer(fig) {
     return { mid, dist, s, tx, ty, n: p.length };
   };
   v.addEventListener('pointermove', e => {
-    if (!pts.has(e.pointerId)) return;
+    if (cropping || !pts.has(e.pointerId)) return;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const now = snapshot(), b = box();
     if (now.n !== start.n) { start = now; return; }
@@ -554,6 +623,7 @@ function openViewer(fig) {
     apply();
   });
   const up = e => {
+    if (!pts.has(e.pointerId)) return;
     pts.delete(e.pointerId);
     if (s <= 1 && ty > 120) return close();
     if (s <= 1) { s = 1; tx = ty = 0; v.style.background = ''; img.style.transition = 'transform .2s'; apply(); setTimeout(() => img.style.transition = '', 220); }

@@ -2,20 +2,25 @@
 // «kv» guarda los datos; «blobs» guarda fotos y audios (como bytes + tipo,
 // porque Safari antiguo fallaba al guardar Blob directamente).
 
-let dbp;
+let dbp, dbo = null;
 function db() {
   if (dbp) return dbp;
   dbp = new Promise((res, rej) => {
     const r = indexedDB.open('beastudio', 1);  // nombre antiguo: no cambiarlo o se perderían los datos
     r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('kv'); d.createObjectStore('blobs'); };
-    r.onsuccess = () => res(r.result);
+    r.onsuccess = () => { dbo = r.result; res(r.result); };
     r.onerror = () => rej(r.error);
   });
   return dbp;
 }
 
-async function tx(store, mode, fn) {
-  const d = await db();
+// Si la base ya está abierta, la escritura empieza en el acto (importa al cerrar la app:
+// esperar aunque sea un instante podía dejar el último cambio sin guardar).
+function tx(store, mode, fn) {
+  if (dbo) return run(dbo, store, mode, fn);
+  return db().then(d => run(d, store, mode, fn));
+}
+function run(d, store, mode, fn) {
   return new Promise((res, rej) => {
     const t = d.transaction(store, mode);
     const req = fn(t.objectStore(store));
@@ -47,6 +52,12 @@ export async function clearAll() {
 
 // Direcciones temporales para enseñar fotos y audios.
 const urls = new Map();
+// Tras cambiar una foto (girarla o recortarla) hay que olvidar su dirección vieja.
+export function blobUrlFresh(id) {
+  const old = urls.get(id);
+  if (old) { URL.revokeObjectURL(old); urls.delete(id); }
+  return blobUrl(id);
+}
 export async function blobUrl(id) {
   if (urls.has(id)) return urls.get(id);
   const b = await blobGet(id);

@@ -45,7 +45,7 @@ function migrate(d) {
   for (const k of TABS) if (!p.tabOrder.includes(k)) p.tabOrder.push(k);
   p.tabOrder = p.tabOrder.filter(k => TABS.includes(k));
   d.prefs = p;
-  d.grades.forEach(g => { if (!g.type) g.type = 'exam'; });
+  d.grades.forEach(g => { if (!g.type) g.type = 'exam'; if (!g.term) g.term = termOf(g.date || today()); });
   d.deadlines.forEach(x => { if (!x.remind) x.remind = []; if (!x.dismissed) x.dismissed = []; });
   d.v = 2;
   return d;
@@ -183,7 +183,12 @@ export function backupDue() {
 
 // ---- calificaciones ----
 export const GRADE_TYPES = { exam: 'Exámenes', work: 'Trabajos y entregas' };
-export const gradesOf = (sid, type) => D.grades.filter(g => g.subjectId === sid && (!type || g.type === type)).sort((a, b) => a.date.localeCompare(b.date));
+// Evaluaciones del curso: 1.ª de septiembre a diciembre, 2.ª de enero a marzo, 3.ª de abril a agosto.
+// Cada nota lleva la suya (se propone por su fecha y se puede cambiar).
+export const TERMS = { 1: '1.ª evaluación', 2: '2.ª evaluación', 3: '3.ª evaluación' };
+export const termOf = date => { const m = +String(date).slice(5, 7); return m >= 9 ? 1 : m <= 3 ? 2 : 3; };
+// term: 1–3 o 0/nada = todo el curso
+export const gradesOf = (sid, type, term) => D.grades.filter(g => g.subjectId === sid && (!type || g.type === type) && (!term || g.term === term)).sort((a, b) => a.date.localeCompare(b.date));
 export function average(list) {
   if (!list.length) return null;
   return list.reduce((a, g) => a + g.value, 0) / list.length;
@@ -191,12 +196,31 @@ export function average(list) {
 export const gradeOfDeadline = id => D.grades.find(g => g.deadlineId === id);
 // Peso de los exámenes en la media final (el resto, trabajos). 70 % si no se ha cambiado.
 export const examWeight = sid => subj(sid)?.examWeight ?? 70;
-export function finalAverage(sid) {
-  const ae = average(gradesOf(sid, 'exam')), aw = average(gradesOf(sid, 'work'));
+// Media final de una evaluación (exámenes y trabajos con su porcentaje).
+// Sin evaluación: la del curso, que es la media de las evaluaciones que tienen notas.
+export function finalAverage(sid, term) {
+  if (!term) {
+    const fs = [1, 2, 3].map(t => finalAverage(sid, t)).filter(x => x != null);
+    return fs.length ? fs.reduce((a, b) => a + b, 0) / fs.length : null;
+  }
+  const ae = average(gradesOf(sid, 'exam', term)), aw = average(gradesOf(sid, 'work', term));
   if (ae == null) return aw;
   if (aw == null) return ae;
   const w = examWeight(sid) / 100;
   return ae * w + aw * (1 - w);
+}
+// Nota que hace falta en la próxima nota de un tipo para llegar a una media final.
+// Devuelve el número (puede ser < 0 = ya está; > 10 = no llega con una sola nota).
+export function neededGrade(sid, term, type, target) {
+  const ex = gradesOf(sid, 'exam', term), wk = gradesOf(sid, 'work', term);
+  const sum = l => l.reduce((a, g) => a + g.value, 0);
+  const w = examWeight(sid) / 100;
+  const mine = type === 'exam' ? ex : wk, other = type === 'exam' ? wk : ex;
+  const wMine = type === 'exam' ? w : 1 - w;
+  if (!other.length || wMine >= 1) return target * (mine.length + 1) - sum(mine);
+  if (wMine <= 0) return null;   // esa parte no cuenta
+  const otherAvg = sum(other) / other.length;
+  return ((target - (1 - wMine) * otherAvg) / wMine) * (mine.length + 1) - sum(mine);
 }
 
 // ---- clases ----

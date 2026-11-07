@@ -44,7 +44,9 @@ const SPRITE = `<svg width="0" height="0" style="position:absolute" aria-hidden=
 <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="i-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></g><g fill="currentColor"><circle cx="8.5" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="15.5" cy="14" r="1"/></g></symbol>
 <symbol id="i-palette" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.6-1.8-.3-1.3.5-2.2 1.8-2.2h1.6a3.5 3.5 0 0 0 3.5-3.5c0-5.2-3.8-9.5-8.5-9.5z"/></g><g fill="currentColor"><circle cx="7.8" cy="11" r="1.3"/><circle cx="10.5" cy="7.3" r="1.3"/><circle cx="15" cy="7.6" r="1.3"/></g></symbol>
-<symbol id="i-grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></g></symbol>
+<symbol id="i-rot" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/></g></symbol>
+<symbol id="i-crop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5v15h15"/><path d="M2.5 6.5h15v15"/></g></symbol>
+<symbol id="i-grid"viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></g></symbol>
 </defs></svg>`;
 
 export const refresh = () => dispatchEvent(new Event('bea:refresh'));
@@ -249,6 +251,54 @@ export function pickColor(title, sel) {
     const { el, close } = sheet(`<h2>${esc(title)}</h2>${swatches(sel, title)}`, { label: title, onClose: v => res(v != null && typeof v !== 'object' ? v : null) });
     bindSwatches(el, c => setTimeout(() => close(c), 150));
   });
+}
+
+// Deslizar una fila con el dedo: a la derecha y a la izquierda hace cada una su acción.
+// opts: { right: { label, run }, left: { label, run } }. Se enseña lo que hará detrás de la fila.
+export function swipeRow(row, opts) {
+  const list = row.parentNode;
+  let x0 = null, y0 = 0, dx = 0, mode = null, pid = null, hint = null, swiped = false;
+  const reset = () => {
+    row.style.transition = 'transform .2s'; row.style.transform = '';
+    setTimeout(() => { row.style.transition = ''; hint?.remove(); hint = null; row.classList.remove('swiping'); }, 200);
+  };
+  row.addEventListener('pointerdown', e => {
+    if (e.button || !e.isPrimary) return;
+    x0 = e.clientX; y0 = e.clientY; dx = 0; mode = null; pid = e.pointerId;
+  });
+  row.addEventListener('pointermove', e => {
+    if (x0 == null || e.pointerId !== pid) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!mode) {
+      if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; }   // desplazar la página
+      if (Math.abs(mx) < 12) return;
+      mode = 'h';
+      try { row.setPointerCapture(pid); } catch (err) {}
+      row.classList.add('swiping');
+      hint = document.createElement('div');
+      hint.className = 'swipehint';
+      hint.style.top = row.offsetTop + 'px'; hint.style.height = row.offsetHeight + 'px';
+      hint.innerHTML = `<span class="r">${ic('i-ok')} ${esc(opts.right.label)}</span><span class="l">${esc(opts.left.label)} ${ic('i-right')}</span>`;
+      list.insertBefore(hint, row);
+    }
+    dx = Math.max(-140, Math.min(140, mx));
+    row.style.transform = `translateX(${dx}px)`;
+    hint.dataset.dir = dx > 0 ? 'r' : 'l';
+    hint.classList.toggle('go', Math.abs(dx) > 80);
+  });
+  const end = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (mode !== 'h') return;
+    swiped = true; setTimeout(() => { swiped = false; }, 350);
+    const act = dx > 80 ? opts.right : dx < -80 ? opts.left : null;
+    reset();
+    if (act) setTimeout(() => act.run(), 120);
+  };
+  row.addEventListener('pointerup', end);
+  row.addEventListener('pointercancel', end);
+  // Tras deslizar, el toque no debe abrir la tarea ni marcar la casilla.
+  row.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
 // Lista que se ordena arrastrando el asa (⠿). Cada hijo lleva data-id y un .handle.

@@ -551,6 +551,84 @@ details.donebox > summary::-webkit-details-marker { display: none; }
 .styles .sw svg { width: 1.2rem; height: 1.2rem; }
 .styles small { display: block; font-size: .68rem; color: var(--ink2); }
 
+/* ---------- evaluaciones, «¿qué nota necesito?» y faltas ---------- */
+.seg.terms { margin-top: .9rem; }
+.medias strong, .medias .mh > span:not(.grow) { width: 2.7rem; }
+.medias .grow { min-width: 0; overflow-wrap: anywhere; }
+.avgs.three { grid-template-columns: repeat(3, 1fr); }
+.avgs.three .card { text-align: left; padding: .65rem .75rem; }
+.avgs.three strong { font-size: 1.6rem; }
+.final.course { cursor: default; }
+.need { margin-top: .6rem; padding: .75rem 1rem .6rem; }
+.needhd { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.needhd > b { font-size: .9rem; font-weight: 600; }
+.need ul { list-style: none; margin-top: .4rem; }
+.need li { display: flex; justify-content: space-between; gap: .6rem; padding: .45rem 0; border-top: 1px solid var(--line); font-size: .84rem; color: var(--ink2); }
+.need li span:last-child { color: var(--ink); text-align: right; }
+.need li b { font-size: 1.05rem; font-weight: 650; }
+.stepper { display: flex; align-items: center; gap: .1rem; background: var(--rosa2); border-radius: 99px; padding: .15rem; font-size: .8rem; color: var(--rosaT); }
+.stepper button { width: 2.75rem; height: 2.75rem; border-radius: 99px; font-size: 1.2rem; color: var(--rosaT); }
+.stepper button:active { background: var(--card); }
+.stepper span { padding: 0 .2rem; white-space: nowrap; }
+.stepper b { color: var(--ink); }
+.stepper.big { justify-content: space-between; font-size: 1rem; padding: .3rem; }
+.stepper.big b { font-size: 1.5rem; font-weight: 500; }
+.abs { display: flex; align-items: center; justify-content: space-between; margin-top: .5rem; padding-left: .2rem; }
+.abslabel { min-height: 2.75rem; font-size: .84rem; color: var(--ink2); display: flex; align-items: center; gap: .3rem; }
+.abslabel b { color: var(--ink); font-size: 1rem; font-weight: 600; }
+.abslabel span { color: var(--rosaT); font-size: .76rem; }
+.absbtns { display: flex; gap: .4rem; }
+.absbtns button { width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--rosa2); color: var(--rosaT); font-size: 1.25rem; }
+.absbtns button:disabled { opacity: .4; }
+.absbtns button:active { transform: scale(.94); }
+
+/* ---------- deslizar tareas, atrasadas, día del examen, resumen ---------- */
+.list { position: relative; }
+.list > [data-task] { position: relative; z-index: 1; background: var(--card); touch-action: pan-y; }
+.swipehint { position: absolute; left: 0; right: 0; z-index: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; font-size: .82rem; font-weight: 600; color: var(--ink2); background: var(--rosa2); transition: background .15s; }
+.swipehint .i { width: 1rem; height: 1rem; vertical-align: -.2rem; }
+.swipehint[data-dir="r"] .l, .swipehint[data-dir="l"] .r { visibility: hidden; }
+.swipehint.go[data-dir="r"] { background: var(--btn); color: var(--btnInk); }
+.swipehint.go[data-dir="l"] { background: var(--rosa); color: var(--ink); }
+.latebar { width: 100%; min-height: 2.75rem; margin-bottom: .45rem; border-radius: .9rem; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--accent); font-size: .84rem; text-align: left; padding: 0 .9rem; }
+.latebar b { font-weight: 650; }
+.examday { display: block; margin-top: .8rem; padding: .95rem 1rem .8rem; position: relative; overflow: hidden; box-shadow: var(--shadow), inset 4px 0 0 var(--c); }
+.examday .tag { display: inline-block; font-size: .68rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: .2rem .6rem; border-radius: 99px; background: var(--c); color: var(--ink); }
+.examday b { display: block; font-size: 1.25rem; font-weight: 600; margin-top: .45rem; line-height: 1.2; overflow-wrap: anywhere; }
+.examday p { font-size: .82rem; color: var(--ink2); margin-top: .2rem; }
+.examday .go { display: flex; align-items: center; gap: .2rem; justify-content: flex-end; font-size: .8rem; color: var(--rosaT); margin-top: .35rem; }
+.weekcard { margin-top: .8rem; padding: .7rem 1rem .8rem; }
+.weekhd { display: flex; align-items: center; justify-content: space-between; }
+.weekhd b { font-weight: 600; }
+.weekhd .btn { min-height: 2.75rem; padding: 0 .2rem; }
+.weekcard p { font-size: .84rem; color: var(--ink2); line-height: 1.45; }
+.weekcard p.nx { margin-top: .45rem; color: var(--ink); font-weight: 500; }
+.weekcard ul { list-style: none; margin-top: .25rem; }
+.weekcard li { display: flex; align-items: center; gap: .5rem; font-size: .84rem; padding: .3rem 0; }
+.weekcard li > span:not(.dot) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.weekcard li small { color: var(--ink2); font-size: .74rem; }
+.weekcard li.more { color: var(--ink2); font-size: .76rem; }
+
+/* ---------- buscador, foto rápida, girar y recortar ---------- */
+.search.big input { min-height: 3.1rem; font-size: 1.05rem; }
+.item.more { color: var(--rosaT); font-size: .84rem; justify-content: center; }
+.photoacts { margin-top: .2rem; }
+.toast { z-index: 85; }
+.viewer .vt span { display: flex; gap: .2rem; }
+.viewer .vt button { display: flex; align-items: center; gap: .35rem; }
+.viewer .vt .i { width: 1.1rem; height: 1.1rem; }
+.cropbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; justify-content: space-between; padding: .6rem 1rem calc(var(--safe-b) + .8rem); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+.cropbar button { color: #fff; min-height: 2.9rem; padding: 0 1.1rem; font-size: .95rem; border-radius: 99px; }
+.cropbar .ok { background: #fff; color: #111; font-weight: 600; }
+.crop { position: fixed; z-index: 2; touch-action: none; }
+.cbox { position: absolute; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); outline: 2px solid #fff; cursor: move; touch-action: none; }
+.cbox i { position: absolute; width: 2.75rem; height: 2.75rem; touch-action: none; }
+.cbox i::after { content: ""; position: absolute; width: 1rem; height: 1rem; border: 3px solid #fff; }
+.cbox [data-h="nw"] { left: -1.375rem; top: -1.375rem; } .cbox [data-h="nw"]::after { right: .6rem; bottom: .6rem; border-right: 0; border-bottom: 0; }
+.cbox [data-h="ne"] { right: -1.375rem; top: -1.375rem; } .cbox [data-h="ne"]::after { left: .6rem; bottom: .6rem; border-left: 0; border-bottom: 0; }
+.cbox [data-h="sw"] { left: -1.375rem; bottom: -1.375rem; } .cbox [data-h="sw"]::after { right: .6rem; top: .6rem; border-right: 0; border-top: 0; }
+.cbox [data-h="se"] { right: -1.375rem; bottom: -1.375rem; } .cbox [data-h="se"]::after { left: .6rem; top: .6rem; border-left: 0; border-top: 0; }
+
 /* ---------- uso con el dedo ---------- */
 /* Sin espera ni zoom al tocar dos veces; sin menú de «mantener pulsado» en botones y enlaces de la app. */
 button, a, input, select, label, summary, [role="checkbox"] { touch-action: manipulation; }

@@ -11,6 +11,7 @@ import * as notas from './notas.js';
 import * as ajustes from './ajustes.js';
 import * as organizar from './organizar.js';
 import * as share from './share.js';
+import * as buscar from './buscar.js';
 import { openAdd } from './add.js';
 import { showWelcome } from './welcome.js';
 
@@ -25,6 +26,7 @@ const ROUTES = {
   ajustes: { view: ajustes, tab: 'hoy' },
   organizar: { view: organizar, tab: 'hoy' },
   importar: { view: share, tab: 'fechas', fn: 'renderImport' },
+  buscar: { view: buscar, tab: 'hoy' },
 };
 
 let cleanup = null;

@@ -1,17 +1,33 @@
 // Botón +: apuntar una tarea, examen, entrega o nota escribiendo con naturalidad.
 // También la ficha de una tarea.
 import { D, save, subjName, color, sectionsOf, defaultSection, addNote, addSubject } from './store.js';
-import { esc, uid, fmtShort, today } from './util.js';
-import { ic, sheet, toast, ask, subjectOptions, handleNewSubject, refresh } from './ui.js';
+import { esc, uid, fmtShort, today, addDays } from './util.js';
+import { ic, sheet, toast, ask, subjectOptions, handleNewSubject, refresh, swipeRow } from './ui.js';
 import { parseQuick } from './parse.js';
+import { blobPut } from './db.js';
 
-const KINDS = [['task', 'Tarea'], ['exam', 'Examen'], ['entrega', 'Entrega'], ['presentacion', 'Presentación'], ['note', 'Nota']];
+const KINDS = [['task', 'Tarea'], ['exam', 'Examen'], ['entrega', 'Entrega'], ['presentacion', 'Presentación'], ['note', 'Nota'], ['foto', 'Foto']];
 const isDl = k => k === 'exam' || k === 'entrega' || k === 'presentacion';
 
 export function toggleTask(k) {
   k.done = !k.done;
   k.doneAt = k.done ? new Date().toISOString() : '';
   save();
+}
+
+// Deslizar una tarea: a la derecha, hecha; a la izquierda, a mañana (o un día más si ya era para después).
+export function swipeTask(row, k, redraw) {
+  if (k.done) return;
+  const tomorrow = addDays(today(), 1);
+  const later = k.due && k.due >= tomorrow;
+  swipeRow(row, {
+    right: { label: 'Hecha', run: () => { toggleTask(k); redraw(); toast('Tarea hecha', () => { toggleTask(k); redraw(); }); } },
+    left: { label: later ? 'Un día más' : 'Mañana', run: () => {
+      const before = k.due;
+      k.due = later ? addDays(k.due, 1) : tomorrow; save(); redraw();
+      toast(later ? `Pasada al ${fmtShort(k.due)}` : 'Pasada a mañana', () => { k.due = before; save(); redraw(); });
+    } },
+  });
 }
 
 // Asignatura según la pantalla abierta (#materias/ID, #notas/ID).
@@ -35,6 +51,9 @@ export function openAdd(preset = {}) {
       <label class="field" data-secf hidden><span>Sección</span><select class="inp" name="n"></select></label>
     </div>
     <button class="btn pri wide" data-ok>Guardar</button>
+    <div class="acts photoacts" data-photo hidden><button class="btn" data-lib>${ic('i-img')} Del carrete</button><button class="btn pri" data-cam>${ic('i-cam')} Hacer foto</button></div>
+    <input type="file" accept="image/*" capture="environment" data-in="cam" hidden>
+    <input type="file" accept="image/*" multiple data-in="lib" hidden>
   `, { label: 'Añadir' });
   const f = n => el.querySelector(`[name=${n}]`);
   setTimeout(() => f('q').focus(), 300);
@@ -53,9 +72,14 @@ export function openAdd(preset = {}) {
     if (!touched.d) f('d').value = p.date || '';
     const k = curKind(p);
     el.querySelectorAll('[data-k]').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === k));
-    el.querySelector('[data-datef]').hidden = k === 'note';
-    el.querySelector('[data-secf]').hidden = k !== 'note';
-    if (k === 'note') fillSections();
+    const noteLike = k === 'note' || k === 'foto';
+    el.querySelector('[data-datef]').hidden = noteLike;
+    el.querySelector('[data-secf]').hidden = !noteLike;
+    el.querySelector('[data-ok]').hidden = k === 'foto';
+    el.querySelector('[data-photo]').hidden = k !== 'foto';
+    f('q').placeholder = k === 'foto' ? 'Título (opcional): pizarra tema 3' : 'Ej.: examen de mates el viernes 13';
+    if (noteLike) fillSections();
+    if (k === 'foto') { el.querySelector('.understood').innerHTML = ''; return p; }
     const chips = [];
     if (f('q').value.trim()) chips.push(`<span><i>${KINDS.find(x => x[0] === k)[1]}</i></span>`);
     if (f('s').value && f('s').value !== '__new') chips.push(`<span><span class="dot" style="background:${color(f('s').value)}"></span>${esc(subjName(f('s').value))}</span>`);
@@ -70,12 +94,39 @@ export function openAdd(preset = {}) {
   f('d').onchange = () => { touched.d = true; update(); };
   el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { kind = b.dataset.k; update(); });
   el.querySelector('[data-ok]').onclick = () => saveIt();
+  // Foto de la pizarra: elige asignatura y sección, abre la cámara y la guarda como nota.
+  const pick = which => {
+    const sid = f('s').value === '__new' ? '' : f('s').value;
+    if (!sid) { f('s').focus(); toast('Elige primero la asignatura'); return; }
+    el.querySelector(`[data-in=${which}]`).click();
+  };
+  el.querySelector('[data-cam]').onclick = () => pick('cam');
+  el.querySelector('[data-lib]').onclick = () => pick('lib');
+  el.querySelectorAll('[data-in]').forEach(inp => inp.onchange = async () => {
+    const files = [...inp.files]; inp.value = '';
+    if (!files.length) return;
+    const sid = f('s').value;
+    const secId = f('n').value || defaultSection(sid).id;
+    toast(files.length > 1 ? 'Guardando fotos…' : 'Guardando la foto…');
+    try {
+      const { compress, photoHtml } = await import('./editor.js');
+      let html = '';
+      for (const file of files) { const id = uid(); await blobPut(id, await compress(file)); html += photoHtml(id); }
+      const title = f('q').value.trim() || `Pizarra · ${fmtShort(today())}`;
+      const n = addNote(secId, title, html + '<p><br></p>');
+      n.text = title;
+      save(); close(); refresh();
+      const sec = sectionsOf(sid).find(s => s.id === secId);
+      toast(`${files.length > 1 ? 'Fotos guardadas' : 'Foto guardada'} en ${subjName(sid)}${sec ? ' · ' + sec.name : ''}`, () => { location.hash = '#nota/' + n.id; }, 'Ver', 6000);
+    } catch (e) { toast('No se pudo guardar la foto'); }
+  });
   update();
 
   function saveIt() {
     const text = f('q').value.trim();
-    if (!text) { f('q').focus(); return; }
     const p = update(), k = curKind(p);
+    if (k === 'foto') { f('q').blur(); return; }
+    if (!text) { f('q').focus(); return; }
     const sid = f('s').value === '__new' ? '' : f('s').value;
     const date = f('d').value;
     if (k === 'task') {

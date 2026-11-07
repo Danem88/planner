@@ -133,7 +133,7 @@ async function uploadTo(sec, done) {
   toast(n === 1 ? 'Archivo subido' : `${n} archivos subidos`);
 }
 
-function fileSheet(f, done) {
+export function fileSheet(f, done) {
   if (!f) return;
   openFile(f, [
     { label: 'Cambiar el nombre', icon: 'i-edit', run: async () => { const v = await askText('Nombre del archivo', { value: f.name }); if (v) { f.name = v; save(); done(); } } },

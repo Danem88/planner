@@ -1,8 +1,8 @@
 // Pantalla «Materias»: cada asignatura con sus apuntes, tareas y calificaciones.
-import { D, save, subj, color, flowerOf, upcoming, dlTitle, gradesOf, average, notesOfSubject, filesOfSubject, sectionsOf, addSubject, KINDS, blobsOfNote, catColor, finalAverage } from './store.js';
+import { D, save, subj, color, flowerOf, upcoming, dlTitle, gradesOf, notesOfSubject, filesOfSubject, sectionsOf, addSubject, KINDS, blobsOfNote, catColor, finalAverage } from './store.js';
 import { esc, today, daysBetween, relDay, num, uid } from './util.js';
 import { ic, sheet, ask, toast, backLink, swatches, bindSwatches, replaceHash, goBack } from './ui.js';
-import { editTask, toggleTask } from './add.js';
+import { editTask, toggleTask, swipeTask } from './add.js';
 import { renderSections } from './notas.js';
 import { renderGrades } from './grades.js';
 import { blobDel } from './db.js';
@@ -33,11 +33,10 @@ export function render(el, params) {
       <button class="sub new" data-new>+ Asignatura</button>
     </div>
     ${withGrades.length ? `<div class="sec">Mis medias</div>
-      <div class="card list medias"><div class="item mh"><span class="grow"></span><span>Exám.</span><span>Trab.</span><span>Final</span></div>
+      <div class="card list medias"><div class="item mh"><span class="grow"></span><span>1.ª</span><span>2.ª</span><span>3.ª</span><span>Curso</span></div>
       ${withGrades.map(s => {
-        const ae = average(gradesOf(s.id, 'exam')), aw = average(gradesOf(s.id, 'work')), fin = finalAverage(s.id);
         const cell = (v, cls = '') => `<strong class="${cls} ${v != null && v < 5 ? 'low' : ''}">${v != null ? num(v) : '—'}</strong>`;
-        return `<a class="item" href="#materias/${s.id}/calificaciones"><span class="grow">${esc(s.name)}</span>${cell(ae)}${cell(aw)}${cell(fin, 'fin')}</a>`;
+        return `<a class="item" href="#materias/${s.id}/calificaciones"><span class="grow">${esc(s.name)}</span>${[1, 2, 3].map(t => cell(finalAverage(s.id, t))).join('')}${cell(finalAverage(s.id), 'fin')}</a>`;
       }).join('')}</div>` : ''}`;
   el.querySelector('[data-new]').onclick = () => editSubject(null, s => { location.hash = '#materias/' + s.id; });
 }
@@ -53,15 +52,43 @@ function renderSubject(el, id, tab) {
     <div class="hero" style="background:${color(id)}">${ic(flowerOf(id), 'f')}
       <div class="grow"><b>${esc(s.name)}</b><small>${[s.teacher, `${notes} ${notes === 1 ? 'apunte' : 'apuntes'}`].filter(Boolean).map(esc).join(' · ')}</small></div>
       <button class="iconbtn" data-edit aria-label="Editar asignatura">${ic('i-edit')}</button></div>
+    <div class="abs" data-abs></div>
     <nav class="tabs">${tabs.map(([k, l]) => `<a href="#materias/${id}/${k}" data-tab="${k}" ${k === tab ? 'aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
     <div data-body></div>`;
   el.querySelector('[data-edit]').onclick = () => editSubject(s, () => renderSubject(el, id, tab));
+  absences(el.querySelector('[data-abs]'), s);
   // Cambiar de pestaña no se apila en «Atrás».
   el.querySelectorAll('.tabs a').forEach(a => a.onclick = e => { e.preventDefault(); replaceHash(a.getAttribute('href')); });
   const body = el.querySelector('[data-body]');
   if (tab === 'apuntes') return renderSections(body, id);
   if (tab === 'calificaciones') return renderGrades(body, id);
   renderTasks(body, id);
+}
+
+// Faltas de asistencia: contador con − / + y, si se pone, el límite (aviso al acercarse).
+function absences(el, s) {
+  const n = s.absences || 0, max = s.maxAbs || 0;
+  const near = max && n >= Math.ceil(max * 0.8);
+  el.innerHTML = `<button class="abslabel" data-limit aria-label="Faltas: ${n}${max ? ` de ${max}` : ''}. Cambiar el límite">
+      Faltas <b class="${near ? 'low' : ''}">${n}</b>${max ? `<span class="${near ? 'low' : ''}"> de ${max}</span>` : '<span>· poner límite</span>'}</button>
+    <span class="absbtns"><button data-d="-1" aria-label="Quitar una falta" ${n ? '' : 'disabled'}>−</button><button data-d="1" aria-label="Añadir una falta">+</button></span>`;
+  el.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    s.absences = Math.max(0, n + +b.dataset.d); save(); absences(el, s);
+    if (+b.dataset.d > 0 && max) {
+      if (s.absences >= max) toast(`Has llegado al límite de faltas de ${s.name}`);
+      else if (s.absences >= Math.ceil(max * 0.8)) { const q = max - s.absences; toast(`Te ${q === 1 ? 'queda 1 falta' : `quedan ${q} faltas`} en ${s.name}`); }
+    }
+  });
+  el.querySelector('[data-limit]').onclick = () => {
+    let v = max || 10;
+    const { el: sh, close } = sheet(`<h2>Límite de faltas</h2>
+      <p class="small" style="margin:-.4rem 0 .9rem;line-height:1.45">Las faltas que puedes tener en ${esc(s.name)} antes de perder la evaluación continua (pregúntalo en clase). Te avisará al acercarte.</p>
+      <div class="stepper big"><button data-v="-1" aria-label="Menos">−</button><span><b>${v}</b> faltas</span><button data-v="1" aria-label="Más">+</button></div>
+      <div class="acts"><button class="btn" data-none>Sin límite</button><button class="btn pri" data-ok>Guardar</button></div>`, { label: 'Límite de faltas' });
+    sh.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { v = Math.max(1, Math.min(99, v + +b.dataset.v)); sh.querySelector('.stepper b').textContent = v; });
+    sh.querySelector('[data-none]').onclick = () => { s.maxAbs = 0; save(); close(); absences(el, s); };
+    sh.querySelector('[data-ok]').onclick = () => { s.maxAbs = v; save(); close(); absences(el, s); };
+  };
 }
 
 function renderTasks(el, sid) {
@@ -92,6 +119,7 @@ function renderTasks(el, sid) {
     const k = D.tasks.find(x => x.id === r.dataset.task);
     r.querySelector('.cb').onclick = () => { toggleTask(k); renderTasks(el, sid); };
     r.querySelector('[data-open]').onclick = () => editTask(k, () => renderTasks(el, sid));
+    swipeTask(r, k, () => renderTasks(el, sid));
   });
 }
 

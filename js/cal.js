@@ -3,7 +3,7 @@
 import { D, catColor, CATS, KINDS, dlTitle, subjName, isPast, doneLabel } from './store.js';
 import { esc, today, ymd, parseYmd, MESES, DIAS, cap, daysBetween } from './util.js';
 import { ic, catDot } from './ui.js';
-import { openAdd, editTask, toggleTask } from './add.js';
+import { openAdd, editTask, toggleTask, swipeTask } from './add.js';
 
 let month = null;   // 'AAAA-MM-01'
 let sel = null;     // día elegido
@@ -87,6 +87,7 @@ export function calendar(el, rerender) {
     const k = D.tasks.find(x => x.id === r.dataset.task);
     r.querySelector('.cb').onclick = () => { toggleTask(k); rerender(); };
     r.querySelector('[data-open]').onclick = () => editTask(k, rerender);
+    swipeTask(r, k, rerender);
   });
   // Deslizar a los lados para cambiar de mes.
   const grid = el.querySelector('.calgrid');

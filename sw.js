@@ -1,13 +1,13 @@
 // Guarda la app en el iPhone para que funcione sin internet.
 // Al cambiar cualquier archivo, sube VERSION para que se actualice.
-const VERSION = 'planner-7';
+const VERSION = 'planner-8';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'fonts/SpaceGrotesk.woff2',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/util.js', 'js/db.js', 'js/store.js', 'js/ui.js', 'js/parse.js',
   'js/hoy.js', 'js/cal.js', 'js/horario.js', 'js/fechas.js', 'js/materias.js', 'js/grades.js', 'js/notas.js',
-  'js/files.js', 'js/editor.js', 'js/clean.js', 'js/add.js', 'js/ajustes.js', 'js/organizar.js', 'js/welcome.js', 'js/install.js', 'js/share.js',
+  'js/files.js', 'js/editor.js', 'js/clean.js', 'js/add.js', 'js/ajustes.js', 'js/organizar.js', 'js/welcome.js', 'js/install.js', 'js/share.js', 'js/buscar.js',
 ];
 
 self.addEventListener('install', e => {
