@@ -1,6 +1,6 @@
 // Arranque y navegación de Planner.
 import { load, D } from './store.js';
-import { injectSprite, nav, goBack, applyDeco, toast } from './ui.js';
+import { injectSprite, nav, goBack, applyDeco, toast, overlays, closeTopOverlay } from './ui.js';
 import { isInstalled, isOldHome } from './install.js';   // escucha cuanto antes el aviso de «se puede instalar»
 import { $ } from './util.js';
 import * as hoy from './hoy.js';
@@ -56,6 +56,10 @@ window.addEventListener('bea:refresh', refresh);
 // Historial propio: «Atrás» vuelve a la pantalla anterior y al mismo sitio de la lista.
 const scrolls = new Map();
 function onHash() {
+  // Vuelta atrás tras cerrar una ventana (ver abajo): la pantalla no ha cambiado.
+  if (nav.forwarding) { nav.forwarding = false; return; }
+  // «Atrás» con una ventana abierta: se cierra la ventana y se deshace el paso atrás.
+  if (overlays.length) { closeTopOverlay(); nav.forwarding = true; history.forward(); return; }
   const h = location.hash || '#hoy';
   const st = nav.stack;
   const prev = st[st.length - 1];
@@ -67,6 +71,15 @@ function onHash() {
   route();
   scrollTo(0, back ? (scrolls.get(h) || 0) : 0);
 }
+// En la primera pantalla no hay nada detrás: se pone un escalón invisible para que
+// «atrás» con una ventana abierta la cierre en vez de salir de la app.
+addEventListener('popstate', e => {
+  if (e.state?.planner !== 'base') return;
+  if (closeTopOverlay()) history.pushState({ planner: 'top' }, '');
+  else history.back();
+});
+addEventListener('keydown', e => { if (e.key === 'Escape') closeTopOverlay(); });
+
 document.addEventListener('click', e => {
   const a = e.target.closest('a[data-back]');
   if (!a) return;
@@ -115,6 +128,7 @@ async function boot() {
   $('#fab').onclick = () => openAdd();
   addEventListener('hashchange', onHash);
   nav.stack.push(location.hash || '#hoy');
+  if (!history.state) { history.replaceState({ planner: 'base' }, ''); history.pushState({ planner: 'top' }, ''); }
   route();
   if (!D.onboarded) showWelcome(() => route());
   // Al volver a la app otro día, refrescar «Hoy».

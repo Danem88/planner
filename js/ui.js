@@ -85,7 +85,12 @@ export const ic = (name, cls = 'i') => `<svg class="${cls}" aria-hidden="true"><
 export const backLink = (href, label) => `<a class="back" href="${href}" data-back>${ic('i-back')}<span>${esc(label)}</span></a>`;
 
 // ---- navegación ----
-export const nav = { stack: [], replacing: false };
+export const nav = { stack: [], replacing: false, forwarding: false };
+// Lo que está abierto encima de la pantalla (hojas, foto en grande…), de abajo arriba.
+// «Atrás» del móvil (o Escape) cierra lo de arriba del todo antes de cambiar de pantalla.
+export const overlays = [];
+export const addOverlay = fn => { overlays.push(fn); return () => { const i = overlays.indexOf(fn); if (i >= 0) overlays.splice(i, 1); }; };
+export function closeTopOverlay() { const fn = overlays[overlays.length - 1]; if (fn) { fn(); return true; } return false; }
 export function goBack(fallback) {
   if (nav.stack.length > 1) history.back();
   else replaceHash(fallback);
@@ -139,14 +144,13 @@ export function sheet(html, { onClose, label = 'Ventana' } = {}) {
   let closed = false;
   const close = (val) => {
     if (closed) return; closed = true; openSheets--;
+    unregister();
     dim.classList.remove('on'); el.classList.remove('on');
     setTimeout(() => { dim.remove(); el.remove(); }, 300);
-    removeEventListener('keydown', onKey);
     vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit);
     onClose && onClose(val);
   };
-  const onKey = e => { if (e.key === 'Escape') close(); };
-  addEventListener('keydown', onKey);
+  const unregister = addOverlay(() => close());
   dim.onclick = () => close();
   // Bajar la hoja deslizando desde el asa.
   let y0 = null;

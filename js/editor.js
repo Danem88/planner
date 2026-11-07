@@ -3,7 +3,7 @@
 // no editables dentro de él (se mueven y se borran como un todo).
 import { blobPut, blobUrl, blobDel, blobUrlFresh } from './db.js';
 import { cleanHtml, isBlocky, looksMarkdown, mdToHtml, plainToHtml } from './clean.js';
-import { ic, sheet, menu, toast, askText } from './ui.js';
+import { ic, sheet, menu, toast, askText, addOverlay } from './ui.js';
 import { esc, uid, debounce, fmtDur, fmtSize } from './util.js';
 import { pickFiles, storeFile, openFile, badge } from './files.js';
 
@@ -515,9 +515,9 @@ function openViewer(fig) {
   const pts = new Map();
   let start = null, lastTap = 0, swipeY = 0;
   const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`; };
-  const close = () => { v.remove(); removeEventListener('keydown', onKey); };
-  const onKey = e => { if (e.key === 'Escape') { if (cropping) endCrop(); else close(); } };
-  addEventListener('keydown', onKey);
+  // «Atrás» o Escape: primero sale del recorte; si no, cierra la foto.
+  const close = () => { v.remove(); unregister(); };
+  const unregister = addOverlay(() => { if (cropping) endCrop(); else close(); });
   v.querySelector('[data-close]').onclick = close;
   const box = () => base || (base = img.getBoundingClientRect());
 

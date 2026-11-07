@@ -1,6 +1,6 @@
 // Guarda la app en el iPhone para que funcione sin internet.
 // Al cambiar cualquier archivo, sube VERSION para que se actualice.
-const VERSION = 'planner-8';
+const VERSION = 'planner-9';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'fonts/SpaceGrotesk.woff2',
